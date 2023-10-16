@@ -1,0 +1,5 @@
+# Config for RNN version of the finder
+
+rnn:
+  n_layers: 3
+  f0_outs: 100

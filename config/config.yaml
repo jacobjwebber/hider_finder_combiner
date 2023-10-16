@@ -1,0 +1,6 @@
+defaults:
+  dataset: libritts
+  finder: rnn
+
+model:
+  hidden_size: 80
