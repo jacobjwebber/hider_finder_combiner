@@ -1,6 +1,14 @@
 defaults:
-  dataset: libritts
-  finder: rnn
+  - dataset: libritts_r
+  - finder: rnn
+
+
+training:
+  batch_size: 32
+  
+  f0_bins: 100
+  lr: 0.007
+
 
 model:
   hidden_size: 80

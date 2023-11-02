@@ -1,9 +1,97 @@
 import numpy as np
-from torch.utils.data import Dataset
+import lightning.pytorch as pl
+from torch.utils.data import Dataset, DataLoader
+import torch
 import os
 import torch.functional as F
+import json
+from text import text_to_sequence
+
+class HFCDataModule(pl.LightningDataModule):
+    def __init__(self, config) -> None:
+        super().__init__()
+        self.config = config
+    
+    def setup(self, stage: str) -> None:
+        print('Setting up dataset')
+
+        self.ds = MyDataset('train.txt', self.config, sort=True, drop_last=True)
+        self.val_ds = MyDataset('val.txt', self.config, sort=False, drop_last=False)
+        self.group_size = 1  # Number of groups for sorting, it;s 4 in the original codebase
+
+    def train_dataloader(self):
+        return DataLoader(
+            self.ds,
+            batch_size=self.config.training.batch_size * self.group_size,
+            shuffle=True,
+            collate_fn=self.ds.collate_fn,
+        )
+
+    def val_dataloader(self):
+        return DataLoader(
+            self.val_ds,
+            batch_size=self.config.training.batch_size * self.group_size,
+            shuffle=False,
+            collate_fn=self.ds.collate_fn,
+        )
+
 
 # from utils in fastspeech 2
+
+def to_pytorch(data):
+    """Convert numpy arrays that are loaded from disk to pytorch tensors"""
+
+    if len(data) == 12:
+        (
+            ids,
+            raw_texts,
+            speakers,
+            texts,
+            src_lens,
+            max_src_len,
+            mels,
+            mel_lens,
+            max_mel_len,
+            pitches,
+            energies,
+            durations,
+        ) = data
+
+        speakers = torch.from_numpy(speakers).long()
+        texts = torch.from_numpy(texts).long()
+        src_lens = torch.from_numpy(src_lens)
+        mels = torch.from_numpy(mels).float()
+        mel_lens = torch.from_numpy(mel_lens)
+        pitches = torch.from_numpy(pitches)
+        energies = torch.from_numpy(energies)
+        durations = torch.from_numpy(durations)
+
+        return (
+            ids,
+            raw_texts,
+            speakers,
+            texts,
+            src_lens,
+            max_src_len,
+            mels,
+            mel_lens,
+            max_mel_len,
+            pitches,
+            energies,
+            durations,
+        )
+
+    if len(data) == 6:
+        (ids, raw_texts, speakers, texts, src_lens, max_src_len) = data
+
+        speakers = torch.from_numpy(speakers).long()
+        texts = torch.from_numpy(texts).long()
+        src_lens = torch.from_numpy(src_lens)
+
+        return (ids, raw_texts, speakers, texts, src_lens, max_src_len)
+    
+    raise NotImplementedError # If len is not one of these
+
 
 def pad_1D(inputs, PAD=0):
     def pad_data(x, length, PAD):
@@ -61,14 +149,15 @@ def pad(input_ele, mel_max_length=None):
 
 
 
-class Dataset(Dataset):
+class MyDataset(Dataset):
     def __init__(
-        self, filename, preprocess_config, train_config, sort=False, drop_last=False
+        self, filename, config, sort=False, drop_last=False
     ):
-        self.dataset_name = preprocess_config["dataset"]
-        self.preprocessed_path = preprocess_config["path"]["preprocessed_path"]
-        self.cleaners = preprocess_config["preprocessing"]["text"]["text_cleaners"]
-        self.batch_size = train_config["optimizer"]["batch_size"]
+        super().__init__()
+        self.dataset_name = config.dataset
+        self.preprocessed_path = config.dataset.path.preprocessed_path
+        self.cleaners = config.dataset.preprocessing.text.text_cleaners
+        self.batch_size = config.training.batch_size
 
         self.basename, self.speaker, self.text, self.raw_text = self.process_meta(
             filename
@@ -195,7 +284,7 @@ class Dataset(Dataset):
         for idx in idx_arr:
             output.append(self.reprocess(data, idx))
 
-        return output
+        return to_pytorch(output[0]) # TODO this will only work properly if groups = 0
 
 
 class TextDataset(Dataset):
