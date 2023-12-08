@@ -4,8 +4,8 @@ from torchaudio import datasets
 from torch.utils.data import DataLoader
 from speech_collator import SpeechCollator, create_speaker2idx, create_phone2idx
 from speech_collator.measures import PitchMeasure, EnergyMeasure
-
-dataset = datasets.LIBRITTS('/disk/scratch2/s1116548/data', download=True)
+import json
+import os
 
 class MyLibri(datasets.LIBRITTS):
      def __getitem__(self, n: int):
@@ -38,17 +38,24 @@ class MyLibri(datasets.LIBRITTS):
             'sample_rate': sample_rate,
             'original_text': original_text,
             'normalized_text': normalized_text,
-            'speaker_id': speaker_id,
-            'chapter_id': chapter_id,
-            'utterance_id': utterance_id,} 
+            'speaker': speaker_id,
+            'chapter': chapter_id,
+            'utterance': utterance_id,} 
 
 # Create speaker2idx and phone2idx
-speaker2idx = create_speaker2idx(dataset)
-phone2idx = create_phone2idx(dataset)
+dataset = MyLibri('/disk/scratch2/s1116548/data/')
+# load speaker2ix from json file if it exists
+if os.path.exists('speaker2idx.json'):
+    with open('speaker2idx.json', 'r') as f:
+        speaker2idx = json.load(f)
+else:
+    with open('speaker2idx.json', 'w') as f:
+        speaker2idx = create_speaker2idx(dataset)
+        json.dump(speaker2idx, f)
 
 speech_collator = SpeechCollator(
     speaker2idx=speaker2idx,
-    phone2idx=phone2idx,
+    phone2idx=None,
     measures=[PitchMeasure(), EnergyMeasure()],
     return_keys=["measures"]
 )
