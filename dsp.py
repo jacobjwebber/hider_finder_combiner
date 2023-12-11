@@ -54,14 +54,14 @@ class FeatureEngineer:
         """
         self.hp = hp
 
-        self.spectrogram = torchaudio.transforms.Spectrogram(hp.n_fft, win_length=hp.win_length,
-                hop_length=hp.hop_length, power=2., normalized=True)
-        self.mel_scale = torchaudio.transforms.MelScale(hp.num_mels, hp.sr, n_stft=hp.n_fft // 2 + 1)
+        #self.spectrogram = torchaudio.transforms.Spectrogram(hp.n_fft, win_length=hp.win_length,
+        #        hop_length=hp.hop_length, power=2., normalized=True)
+        #self.mel_scale = torchaudio.transforms.MelScale(hp.num_mels, hp.sr, n_stft=hp.n_fft // 2 + 1)
         #self.i_mel_scale = InverseMelScale(hp.n_fft // 2 + 1, n_mels=hp.num_mels, sample_rate=hp.sr)
-        self.a_to_DB = torchaudio.transforms.AmplitudeToDB()
-        self.g_l = torchaudio.transforms.GriffinLim(n_fft=hp.n_fft, win_length=hp.win_length,
-                hop_length=hp.hop_length,
-                power=2.)
+        #self.a_to_DB = torchaudio.transforms.AmplitudeToDB()
+        #self.g_l = torchaudio.transforms.GriffinLim(n_fft=hp.n_fft, win_length=hp.win_length,
+        #        hop_length=hp.hop_length,
+        #        power=2.)
 
         # for hifigan mel
         self.mel_basis = {}
@@ -113,9 +113,10 @@ class FeatureEngineer:
         y = torch.nn.functional.pad(
                     y.unsqueeze(1), (int((self.hp.n_fft-self.hp.hop_length)/2), int((self.hp.n_fft-self.hp.hop_length)/2)), mode='reflect')
 
+        print(y.shape)
         y = y.squeeze(1)
         spec = torch.stft(y, self.hp.n_fft, hop_length=self.hp.hop_length, win_length=self.hp.win_length, window=self.hann_window[str(y.device)],
-                          center=False, pad_mode='reflect', normalized=False, onesided=True)
+                          center=False, pad_mode='reflect', normalized=False, onesided=True, return_complex=False)
         spec = torch.sqrt(spec.pow(2).sum(-1)+(1e-9))
         spec = torch.matmul(self.mel_basis[str(self.hp.fmax)+'_'+str(y.device)], spec)
         spec = spectral_normalize_torch(spec)

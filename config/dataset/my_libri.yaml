@@ -1,0 +1,3 @@
+root: /home/jjw/datasets
+subset: train-clean-100
+save_as: LibriTTS

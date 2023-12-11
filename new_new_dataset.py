@@ -8,14 +8,8 @@ import json
 import os
 from tqdm import tqdm
 import dsp
+import hydra
 
-# Plagiarised from speech_collator by cminix on GitHub
-def create_speaker2idx(dataset):
-    speaker2idx = {}
-    for row in tqdm(dataset):
-        if row["speaker"] not in speaker2idx:
-            speaker2idx[row["speaker"]] = len(speaker2idx)
-    return speaker2idx
 
 def pad_sequence(batch, max_len=88200):
     """
@@ -47,6 +41,7 @@ def pad_sequence(batch, max_len=88200):
     batch = batch[:,:max_len]
     return batch
 
+
 def collate_fn(batch):
 
     # A data tuple has the form:
@@ -68,12 +63,35 @@ def collate_fn(batch):
 
 
 class MyLibri(datasets.LIBRITTS):
-    def __init__(self, root: str | Path, hp, url: str = ..., folder_in_archive: str = ..., download: bool = False) -> None:
+    def __init__(self, hp, download=False):
         self.hp = hp
-        super().__init__(root, url, folder_in_archive, download)
+        super().__init__(hp.dataset.root, hp.dataset.subset, hp.dataset.save_as, download)
+        self.root = hp.dataset.root
         self.fe = dsp.FeatureEngineer(self.hp)
+        self.populate_speaker_idx()
+    
+    def populate_speaker_idx(self):
 
-     def __getitem__(self, n: int):
+        # Create map from speaker string to an int index
+        speaker_idx_path = os.path.join(self.root, 'speaker2idx.json')
+        if os.path.exists(speaker_idx_path):
+            with open(speaker_idx_path, 'r') as f:
+                print('hellpo')
+                speaker2idx = json.load(f)
+        else:
+            speaker2idx = {}
+            for row in tqdm(self):
+                if row["speaker"] not in speaker2idx:
+                    speaker2idx[row["speaker"]] = len(speaker2idx)
+
+            with open(speaker_idx_path, 'w') as f:
+                json.dump(speaker2idx, f)
+
+        self.speaker2idx = speaker2idx
+        return speaker2idx
+
+
+    def __getitem__(self, n: int):
         """
         Retrieve the item at the given index.
 
@@ -97,7 +115,12 @@ class MyLibri(datasets.LIBRITTS):
         speaker_id,
         chapter_id,
         utterance_id) = super().__getitem__(n)
+
+        waveform = self.fe.resample(waveform, sample_rate)
         f0 = self.fe.f0(waveform)
+        mel = self.fe.hifigan_mel_spectrogram(waveform)
+        speaker_id = self.speaker2idx[speaker_id]
+
 
         return {
             'waveform': waveform,
@@ -106,20 +129,21 @@ class MyLibri(datasets.LIBRITTS):
             'normalized_text': normalized_text,
             'speaker': speaker_id,
             'chapter': chapter_id,
-            'utterance': utterance_id,} 
+            'utterance': utterance_id,
+            'f0': f0,
+            'mel': mel,
+        }
 
 
-def main():
+
+@hydra.main(version_base=None, config_path='config', config_name="config")
+def main(hp):
     # Create speaker2idx and phone2idx
-    dataset = MyLibri('/home/jjw/datasets', download=True)
+    
+    dataset = MyLibri(hp, download=True)
     # load speaker2ix from json file if it exists
-    if os.path.exists('speaker2idx.json'):
-        with open('speaker2idx.json', 'r') as f:
-            speaker2idx = json.load(f)
-    else:
-        with open('speaker2idx.json', 'w') as f:
-            speaker2idx = create_speaker2idx(dataset)
-            json.dump(speaker2idx, f)
+    for item in tqdm(dataset):
+        pass
 
     # Create DataLoader
     dataloader = DataLoader(
@@ -128,8 +152,6 @@ def main():
         collate_fn=collate_fn,
     )
 
-    for item in dataloader:
-        print(item)
 
 if __name__ == '__main__':
     main()

@@ -5,4 +5,3 @@ interior_size: 80
 
 rnn:
   n_layers: 3
-  f0_outs: 100

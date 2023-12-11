@@ -1,14 +1,27 @@
 defaults:
-  - dataset: libritts_r
+  - dataset: my_libri
   - finder: rnn
-
 
 training:
   batch_size: 32
-  
-  f0_bins: 100
   lr: 0.007
 
+control_variables: 
+  f0_bins: 100
+  f0_min: 100
+  f0_max: 4000
+
+hifigan:
+num_mels: 80
+num_freq: 1025
+n_fft: 1024
+hop_length: 256
+win_length: 1024
+
+sr: 22050
+
+fmin: 0
+fmax: 8000
 
 model:
   hidden_size: 80
