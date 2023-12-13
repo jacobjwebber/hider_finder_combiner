@@ -101,9 +101,9 @@ class FeatureEngineer:
         #, n_fft, num_mels, sampling_rate, hop_size, win_size, fmin, fmax, center=False):
         # taken from hifigan repo
         if torch.min(y) < -1.:
-            print('min value is ', torch.min(y))
+            pass #print('min value is ', torch.min(y))
         if torch.max(y) > 1.:
-            print('max value is ', torch.max(y))
+            pass #print('max value is ', torch.max(y))
 
         if self.hp.fmax not in self.mel_basis:
             mel = librosa_mel_fn(sr=self.hp.sr, n_fft=self.hp.n_fft, n_mels=self.hp.num_mels, fmin=self.hp.fmin, fmax=self.hp.fmax)
@@ -113,7 +113,6 @@ class FeatureEngineer:
         y = torch.nn.functional.pad(
                     y.unsqueeze(1), (int((self.hp.n_fft-self.hp.hop_length)/2), int((self.hp.n_fft-self.hp.hop_length)/2)), mode='reflect')
 
-        print(y.shape)
         y = y.squeeze(1)
         spec = torch.stft(y, self.hp.n_fft, hop_length=self.hp.hop_length, win_length=self.hp.win_length, window=self.hann_window[str(y.device)],
                           center=False, pad_mode='reflect', normalized=False, onesided=True, return_complex=False)
@@ -194,9 +193,10 @@ class FeatureEngineer:
 
     def f0(self, y):
         unvoiced_value = 0.0
+        hop_ms = self.hp.hop_length * 1000 / self.hp.sr
         x = y.squeeze().numpy()
         x = x.astype(np.float64)
-        f0, _, aperiodicity = pyworld.wav2world(x, self.hp.sr, frame_period=12.5)
+        f0, _, aperiodicity = pyworld.wav2world(x, self.hp.sr, frame_period=hop_ms)
         is_voiced = np.logical_not(np.isclose(f0, unvoiced_value * np.ones_like(f0), atol=1e-6))
         f0 = np.expand_dims(f0, 1)
         f0 = self.interpolate(f0, is_voiced)

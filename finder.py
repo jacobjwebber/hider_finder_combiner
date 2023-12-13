@@ -12,7 +12,7 @@ import torch.nn as nn
 
 import hydra
 
-from fastspeech2_dataset import HFCDataModule
+from new_new_dataset import HFCDataModule
 
 
 class Finder(pl.LightningModule):
@@ -21,8 +21,8 @@ class Finder(pl.LightningModule):
         self.lr = hparams.training.lr
         if hparams.finder.name == 'rnn':
             self.model = RNNFinder(hparams.finder.interior_size,
-                                   hparams.dataset.preprocessing.mel.n_mel_channels,
-                                   hparams.training.f0_bins,
+                                   hparams.num_mels,
+                                   hparams.control_variables.f0_bins,
                                    n_speakers,
                                    hparams.finder.rnn.n_layers)
         elif hparams.finder.name == 'transformer':
@@ -30,26 +30,13 @@ class Finder(pl.LightningModule):
         else:
             raise NotImplementedError
 
-    def training_step(self, batch, batch_idx):
-        (
-            ids,
-            raw_texts,
-            speakers,
-            texts,
-            src_lens,
-            max_src_len,
-            mels,
-            mel_lens,
-            max_mel_len,
-            pitches,
-            energies,
-            durations,
-        ) = batch
+    def training_step(self, batch):
 
-        f0_prediction, speaker_id_prediction = self.model(mels)
+        mel, f0, vuv, speaker_id = batch
+        f0_prediction, speaker_id_prediction = self.model(mel)
 
         speaker_id_loss = F.cross_entropy(
-            speaker_id_prediction, speakers)
+            speaker_id_prediction, speaker_id)
         
         self.log('speaker_id', speaker_id_loss, prog_bar=True)
 
@@ -99,10 +86,7 @@ class RNNFinder(nn.Module):
 def train(config):
     # Trains a finder on ground truth
     dm = HFCDataModule(config)
-
-    f = os.path.join(config.dataset.path.preprocessed_path, 'speakers.json')
-    with open(f, 'r') as f:
-        n_speakers = len(json.load(f))
+    n_speakers = dm.n_speakers
 
     finder = Finder(config, n_speakers)
 
@@ -112,7 +96,7 @@ def train(config):
 
     # finds learning rate automatically
     # sets hparams.lr or hparams.learning_rate to that learning rate
-    tuner.lr_find(finder, datamodule=dm)
+    #tuner.lr_find(finder, datamodule=dm)
     trainer.fit(finder, datamodule=dm)
 
 
