@@ -3,21 +3,22 @@ defaults:
   - finder: rnn
 
 training:
-  batch_size: 32
-  lr: 0.007
+  batch_size: 256
+  #lr: 0.007
+  #lr: 0.10964781961431852
+  lr: 0.0010964781961431851
 
 control_variables: 
   f0_bins: 100
   f0_min: 100
   f0_max: 4000
 
-hifigan:
+# For hifigan mels
 num_mels: 80
 num_freq: 1025
 n_fft: 1024
 hop_length: 256
 win_length: 1024
-
 sr: 22050
 
 fmin: 0

@@ -1,7 +1,7 @@
 # Config for RNN version of the finder
 name: rnn
 
-interior_size: 80
+interior_size: 200
 
 rnn:
-  n_layers: 3
+  n_layers: 8

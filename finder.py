@@ -80,6 +80,11 @@ class RNNFinder(nn.Module):
         # use mean to reduce time dimensionality
         speaker_prediction = self.speaker_id_lin(torch.mean(out, dim=1))
         return f0_prediction, speaker_prediction
+    
+    def configure_optimizers(self):
+        optimizer = optim.Adam(self.parameters(), lr=self.lr)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, verbose=True)
+        return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'monitor': 'loss'}}
 
 
 @hydra.main(version_base=None, config_path='config', config_name="config")
@@ -90,13 +95,14 @@ def train(config):
 
     finder = Finder(config, n_speakers)
 
-    trainer = pl.Trainer(gradient_clip_val=0.5, detect_anomaly=True)
+    logger = pl.loggers.wandb.WandbLogger(project="hfc_finder")
+    trainer = pl.Trainer(logger=logger, gradient_clip_val=0.5, detect_anomaly=True)
     # Create a Tuner
     tuner = Tuner(trainer)
 
     # finds learning rate automatically
     # sets hparams.lr or hparams.learning_rate to that learning rate
-    #tuner.lr_find(finder, datamodule=dm)
+    tuner.lr_find(finder, datamodule=dm)
     trainer.fit(finder, datamodule=dm)
 
 
