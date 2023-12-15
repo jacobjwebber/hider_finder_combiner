@@ -117,3 +117,4 @@ output/
 TextGrid/
 hifigan/*.pth.tar
 wandb
+.lr_find_*
