@@ -118,3 +118,7 @@ TextGrid/
 hifigan/*.pth.tar
 wandb
 .lr_find_*
+outputs
+lightning_logs
+wandb
+hfc_finder
