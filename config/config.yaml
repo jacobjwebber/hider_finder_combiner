@@ -1,17 +1,28 @@
 defaults:
   - dataset: my_libri
+  - hider: rnn
   - finder: rnn
+  - combiner: rnn
+
+use_f0: False
+
+training_finder:
+  batch_size: 256
+  lr: 0.001
 
 training:
-  batch_size: 256
+  batch_size: 32
+  clip: 0.5
   #lr: 0.007
   #lr: 0.10964781961431852
-  lr: 0.0010964781961431851
+  lr_g: 0.001
+  lr_f: 0.0004
 
 control_variables: 
   f0_bins: 100
-  f0_min: 100
-  f0_max: 4000
+  f0_min: 60
+  f0_max: 400
+  speaker_embedding_dim: 512
 
 # For hifigan mels
 num_mels: 80
@@ -26,3 +37,4 @@ fmax: 8000
 
 model:
   hidden_size: 80
+  beta: 200.

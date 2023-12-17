@@ -18,7 +18,7 @@ from new_new_dataset import HFCDataModule
 class Finder(pl.LightningModule):
     def __init__(self, hparams, n_speakers):
         super().__init__()
-        self.lr = hparams.training.lr
+        self.lr = hparams.training_finder.lr
         if hparams.finder.name == 'rnn':
             self.model = RNNFinder(hparams.finder.interior_size,
                                    hparams.num_mels,
@@ -29,6 +29,10 @@ class Finder(pl.LightningModule):
             raise NotImplementedError
         else:
             raise NotImplementedError
+    
+    def forward(self, mel):
+        return self.model(mel)
+
 
     def training_step(self, batch):
 
@@ -90,7 +94,7 @@ class RNNFinder(nn.Module):
 @hydra.main(version_base=None, config_path='config', config_name="config")
 def train(config):
     # Trains a finder on ground truth
-    dm = HFCDataModule(config)
+    dm = HFCDataModule(config, 'finder')
     n_speakers = dm.n_speakers
 
     finder = Finder(config, n_speakers)

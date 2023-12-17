@@ -1,15 +1,17 @@
 # Set of dsp functions for hfc
+import torch
 from torchaudio import functional as fa
 import torchaudio
-from until_patched import InverseMelScale
-import torch
-import hparams
+
 import numpy as np
-#import pandas as pd
 import pyworld
 from librosa.filters import mel as librosa_mel_fn
 
-test_plots = True
+from until_patched import InverseMelScale
+import hparams
+
+
+test_plots = False
 if test_plots:
     from matplotlib import pyplot as plt
 
@@ -266,8 +268,14 @@ class FeatureEngineer:
 
         return signal
 
+def bin_tensor(tensor, num_bins, min_val, max_val):
+    bins = torch.linspace(min_val, max_val, num_bins, device=tensor.device)
+    bin_indices = torch.bucketize(tensor, bins)
+    return bin_indices
+
 def onehot_index(xs, num_bins, x_range):
     xs = xs.squeeze()
+    print(xs.shape)
     indexs = torch.zeros_like(xs)
 
     for i, x in enumerate(xs):
@@ -547,15 +555,13 @@ def interpolate(signal, is_voiced):
 
     return signal
 
-def onehotify(hot_bin, shape, train_on_gpu):
+def onehotify(hot_bin, shape):
     batch_size, seq_len, num_bins = shape
     #print(f0)
-    hot_bin = hot_bin.view(batch_size, seq_len, 1).long().cpu()
-    onehot = torch.FloatTensor(batch_size, seq_len, num_bins)
+    hot_bin = hot_bin.view(batch_size, seq_len, 1).long()
+    onehot = torch.FloatTensor(batch_size, seq_len, num_bins, device=hot_bin.device)
     onehot.zero_()
     onehot.scatter_(2, hot_bin, 1)
-    if train_on_gpu:
-        onehot = onehot.cuda()
     return onehot
 
 

@@ -11,26 +11,21 @@ import lightning.pytorch as pl
 
 
 class HFCDataModule(pl.LightningDataModule):
-    def __init__(self, config) -> None:
-        """
-        Initializes a new instance of the class.
-
-        Args:
-            config (Any): The configuration object.
-
-        Returns:
-            None
-        """
+    def __init__(self, config, model='finder'):
         super().__init__()
         self.config = config
         self.dataset = MyLibri(self.config, download=True)
         self.dataset.populate_speaker_idx()
         self.n_speakers = self.dataset.n_speakers
+        if model == 'finder':
+            self.batch_size = self.config.training_finder.batch_size
+        elif model == 'hfc':
+            self.batch_size = self.config.training.batch_size
     
     def train_dataloader(self):
         return DataLoader(
             self.dataset,
-            batch_size=self.config.training.batch_size,
+            batch_size=self.batch_size,
             shuffle=True,
             collate_fn=collate_fn,
             num_workers=8,
