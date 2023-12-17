@@ -107,7 +107,7 @@ class HFC(pl.LightningModule):
         self.toggle_optimizer(f_opt)
         self.backward_F()
         #nn.utils.clip_grad_norm_(self.finder.parameters(), self.hp.clip)
-        f_opt.zero_grad()
+        f_opt.zero_grad() # TODO: check this
         self.manual_backward(self.finder_loss)
         self.clip_gradients(f_opt, gradient_clip_val=self.hp.training.clip, gradient_clip_algorithm="norm")
         f_opt.step()
@@ -128,6 +128,7 @@ class HFC(pl.LightningModule):
         self.log('leakage_loss', self.leakage_loss, prog_bar=True)
         self.log('combiner_loss', self.combiner_loss, prog_bar=True)
         self.log('finder_loss', self.finder_loss, prog_bar=True)
+        self.log('g_losses', self.g_losses, prog_bar=True)
 
     """
     def validation_step(self, batch):
@@ -156,8 +157,7 @@ def train(config):
     hfc = HFC(config, n_speakers)
 
     logger = pl.loggers.wandb.WandbLogger(project="hfc_main")
-    logger = pl.loggers.CSVLogger(save_dir='./logs', name='hfc_main')
-    trainer = pl.Trainer() #logger=logger, gradient_clip_val=0.5, detect_anomaly=True)
+    trainer = pl.Trainer(logger=logger) #logger=logger, gradient_clip_val=0.5, detect_anomaly=True)
     # Create a Tuner
 
     # finds learning rate automatically

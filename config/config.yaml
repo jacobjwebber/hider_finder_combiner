@@ -15,8 +15,8 @@ training:
   clip: 0.5
   #lr: 0.007
   #lr: 0.10964781961431852
-  lr_g: 0.001
-  lr_f: 0.0004
+  lr_g: 0.0001
+  lr_f: 0.004
 
 control_variables: 
   f0_bins: 100
@@ -37,4 +37,4 @@ fmax: 8000
 
 model:
   hidden_size: 80
-  beta: 200.
+  beta: 600.
