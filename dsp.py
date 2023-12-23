@@ -269,7 +269,7 @@ class FeatureEngineer:
         return signal
 
 def bin_tensor(tensor, num_bins, min_val, max_val):
-    bins = torch.linspace(min_val, max_val, num_bins, device=tensor.device)
+    bins = torch.linspace(min_val, max_val, num_bins-1, device=tensor.device)
     bin_indices = torch.bucketize(tensor, bins)
     return bin_indices
 

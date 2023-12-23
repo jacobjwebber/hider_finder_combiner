@@ -23,6 +23,7 @@ class HFC(pl.LightningModule):
         super(HFC, self).__init__()
 
         self.hp = hp
+        self.save_hyperparameters(hp)
         self.n_speakers = n_speakers
         self.f0_bins = hp.control_variables.f0_bins
         self.automatic_optimization=False # required for manual optimization scheduling in lightning
@@ -37,13 +38,14 @@ class HFC(pl.LightningModule):
         # The 'combiner loss' criterion
         self.g_criterion = nn.MSELoss()
         # Ignore (for now) index associated with unvoiced regions
-        self.f_criterion = nn.CrossEntropyLoss(ignore_index=0)
+        self.f_criterion = nn.CrossEntropyLoss()
 
     def configure_optimizers(self):
         # Define params that generate during synthesis as 'generator' (g)
         self.generator_params = list(self.hider.parameters()) + list(self.combiner.parameters())
         self.g_opt = Adam(self.generator_params, lr=self.hp.training.lr_g, weight_decay=0.00)
-        self.f_opt = Adam(self.finder.parameters(), lr=self.hp.training.lr_f, weight_decay=0.00)
+        self.f_opt = Adam(self.finder.parameters(), lr=self.hp.training.lr_f)
+        #self.lr_schedulers = {'g_opt': self.g_opt, 'f_opt': self.f_opt}
         return [self.g_opt, self.f_opt]
 
 
@@ -101,26 +103,22 @@ class HFC(pl.LightningModule):
     def optimize_parameters(self):
         g_opt, f_opt = self.optimizers()
         # Generate hidden repr and output
-        self.forward()
-
         # Train finder
-        self.toggle_optimizer(f_opt)
+        self.forward()
         self.backward_F()
-        #nn.utils.clip_grad_norm_(self.finder.parameters(), self.hp.clip)
         f_opt.zero_grad() # TODO: check this
         self.manual_backward(self.finder_loss)
         self.clip_gradients(f_opt, gradient_clip_val=self.hp.training.clip, gradient_clip_algorithm="norm")
         f_opt.step()
-        self.untoggle_optimizer(f_opt)
+
 
         # Train hider and combiner with updated Finder for leakage loss
-        self.toggle_optimizer(g_opt)
         self.backward_G()
+        g_opt.zero_grad()
         self.manual_backward(self.g_losses)
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
         self.clip_gradients(g_opt, gradient_clip_val=self.hp.training.clip, gradient_clip_algorithm="norm")
         g_opt.step()
-        self.untoggle_optimizer(g_opt)
 
     def training_step(self, batch):
         self.set_input(*batch)
@@ -129,13 +127,16 @@ class HFC(pl.LightningModule):
         self.log('combiner_loss', self.combiner_loss, prog_bar=True)
         self.log('finder_loss', self.finder_loss, prog_bar=True)
         self.log('g_losses', self.g_losses, prog_bar=True)
+        return self.g_losses
 
-    """
-    def validation_step(self, batch):
+    def validation_step(self, batch, batch_idx):
         self.set_input(*batch)
         self.backward_G()
         self.backward_F()
-    """
+        self.log('val/leakage_loss', self.leakage_loss, prog_bar=True)
+        self.log('val/combiner_loss', self.combiner_loss, prog_bar=True)
+        self.log('val/finder_loss', self.finder_loss, prog_bar=True)
+        self.log('val/g_losses', self.g_losses, prog_bar=True)
 
 
     def anneal(self):
@@ -156,7 +157,10 @@ def train(config):
     n_speakers = dm.n_speakers
     hfc = HFC(config, n_speakers)
 
-    logger = pl.loggers.wandb.WandbLogger(project="hfc_main")
+    if config.training.wandb:
+        logger = pl.loggers.WandbLogger(project="hfc_main")
+    else:
+        logger = None
     trainer = pl.Trainer(logger=logger) #logger=logger, gradient_clip_val=0.5, detect_anomaly=True)
     # Create a Tuner
 

@@ -7,16 +7,18 @@ defaults:
 use_f0: False
 
 training_finder:
-  batch_size: 256
+  batch_size: 128
   lr: 0.001
 
 training:
-  batch_size: 32
+  batch_size: 64
+  lr_find: False
+  wandb: False
   clip: 0.5
   #lr: 0.007
   #lr: 0.10964781961431852
-  lr_g: 0.0001
-  lr_f: 0.004
+  lr_g: 0.001
+  lr_f: 0.0001
 
 control_variables: 
   f0_bins: 100

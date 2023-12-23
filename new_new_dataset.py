@@ -1,7 +1,7 @@
 import random
 import torch
 from torchaudio import datasets
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, random_split
 import json
 import os
 from tqdm import tqdm
@@ -17,16 +17,29 @@ class HFCDataModule(pl.LightningDataModule):
         self.dataset = MyLibri(self.config, download=True)
         self.dataset.populate_speaker_idx()
         self.n_speakers = self.dataset.n_speakers
+        self.valid_split = self.config.dataset.validation_split
         if model == 'finder':
             self.batch_size = self.config.training_finder.batch_size
         elif model == 'hfc':
             self.batch_size = self.config.training.batch_size
+        
+        self.valid_set, self.train_set = random_split(self.dataset, [self.valid_split, 1. - self.valid_split], generator=torch.Generator().manual_seed(42))
+
     
     def train_dataloader(self):
         return DataLoader(
-            self.dataset,
+            self.train_set,
             batch_size=self.batch_size,
             shuffle=True,
+            collate_fn=collate_fn,
+            num_workers=8,
+        )
+    
+    def val_dataloader(self):
+        return DataLoader(
+            self.valid_set,
+            batch_size=1,
+            shuffle=False,
             collate_fn=collate_fn,
             num_workers=8,
         )
@@ -169,7 +182,8 @@ def main(hp):
         num_workers=10,
     )
     for data in tqdm(dataloader):
-        pass #print([datum.shape for datum in data])
+        mel, f0, vuv, speaker_id = data
+        print(f0.shape)
 
 
 if __name__ == '__main__':
