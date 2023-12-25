@@ -7,6 +7,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
+import wandb
+from speechbrain.pretrained import HIFIGAN
 
 
 # Local imports
@@ -15,6 +17,7 @@ from hider import Hider
 from finder import Finder
 from combiner import Combiner
 from new_new_dataset import HFCDataModule
+import plottage
 
 class HFC(pl.LightningModule):
     """ An implementation of the Hider Finder Combiner architecture for
@@ -29,11 +32,10 @@ class HFC(pl.LightningModule):
         self.automatic_optimization=False # required for manual optimization scheduling in lightning
 
         # Component networks
-        # TODO rename width/size dichotomy also input/output mean same thing for hfc
-        # TODO pass hp to get_[finder,hider,combiner] method and let it sort everything
         self.hider = Hider(hp)
         self.finder = Finder(hp, n_speakers)
         self.combiner = Combiner(hp, n_speakers)
+        self.hifigan = None
 
         # The 'combiner loss' criterion
         self.g_criterion = nn.MSELoss()
@@ -45,15 +47,15 @@ class HFC(pl.LightningModule):
         self.generator_params = list(self.hider.parameters()) + list(self.combiner.parameters())
         self.g_opt = Adam(self.generator_params, lr=self.hp.training.lr_g, weight_decay=0.00)
         self.f_opt = Adam(self.finder.parameters(), lr=self.hp.training.lr_f)
-        #self.lr_schedulers = {'g_opt': self.g_opt, 'f_opt': self.f_opt}
+        #self.lr_schedulers = {'g_opt': self.g_opt, 'f_opt': self.f_opt} TODO
         return [self.g_opt, self.f_opt]
 
 
     def set_input(self, mel, f0, is_voiced, speaker_id):
 
         # Find the shape of the onehots for the cv
-        f0 = f0.squeeze()
-        is_voiced = is_voiced.squeeze()
+        f0 = f0.squeeze(-1)
+        is_voiced = is_voiced.squeeze(-1)
         batch_size, seq_len = f0.shape
         #print(f'f0 shape: {f0.shape}')
         #print(f'is_voiced shape: {is_voiced.shape}')
@@ -131,12 +133,27 @@ class HFC(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         self.set_input(*batch)
+        self.forward()
         self.backward_G()
         self.backward_F()
         self.log('val/leakage_loss', self.leakage_loss, prog_bar=True)
         self.log('val/combiner_loss', self.combiner_loss, prog_bar=True)
         self.log('val/finder_loss', self.finder_loss, prog_bar=True)
         self.log('val/g_losses', self.g_losses, prog_bar=True)
+        if batch_idx < self.hp.training.log_n_audios:
+            if not self.hifigan:
+                self.hifigan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-libritts-22050Hz", savedir="hifigan_checkpoints", run_opts={"device": self.mel.device})
+            self.log_audio(batch_idx)
+    
+    def log_audio(self, n):
+        # Depends on wandb -- TODO make an option for local or whatever
+        mel = self.controlled.transpose(1,2)
+        self.audio = self.hifigan.decode_batch(self.controlled.transpose(1,2))
+        html_file_name = f'outputs/audio_{self.speaker_id}_{n}.html'
+        plottage.save_audio_with_bokeh_plot_to_html(self.audio, self.hp.sr, html_file_name)
+        html = wandb.Html(html_file_name)
+        #my_table = wandb.Table(columns=["audio_with_plot"], data=[[html], [html]])
+        self.logger.log_table('val/audio', columns=['audio_with_plot'], data=[[html], [html]])
 
 
     def anneal(self):
@@ -147,6 +164,7 @@ class HFC(pl.LightningModule):
         generator_params = list(self.hider.parameters()) + list(self.combiner.parameters())
         self.g_opt = Adam(generator_params, lr=self.hp.g_lr, weight_decay=0.00)
         self.f_opt = Adam(self.finder.parameters(), lr=self.hp.f_lr, weight_decay=0.00)
+    
 
 
 
@@ -161,8 +179,9 @@ def train(config):
         logger = pl.loggers.WandbLogger(project="hfc_main")
     else:
         logger = None
-    trainer = pl.Trainer(logger=logger) #logger=logger, gradient_clip_val=0.5, detect_anomaly=True)
-    # Create a Tuner
+    trainer = pl.Trainer(logger=logger,
+                         val_check_interval=10,
+                        ) 
 
     # finds learning rate automatically
     # sets hparams.lr or hparams.learning_rate to that learning rate

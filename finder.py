@@ -20,7 +20,7 @@ from new_new_dataset import HFCDataModule
 class Finder(pl.LightningModule):
     def __init__(self, hparams, n_speakers):
         super().__init__()
-        self.hparams = hparams
+        #self.hparams = hparams
         self.save_hyperparameters(hparams)
         self.lr = hparams.training_finder.lr
         if hparams.finder.name == 'rnn':

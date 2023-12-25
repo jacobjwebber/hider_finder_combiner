@@ -8,7 +8,27 @@ from tqdm import tqdm
 import dsp
 import hydra
 import lightning.pytorch as pl
+from speechbrain.lobes.models.FastSpeech2 import mel_spectogram
 
+def melspect(waveform):
+    """use these exact values for pretrained spect"""
+    spectrogram, _ = mel_spectogram(
+        audio=waveform.squeeze(),
+        sample_rate=22050,
+        hop_length=256,
+        win_length=1024,
+        n_mels=80,
+        n_fft=1024,
+        f_min=0.0,
+        f_max=8000.0,
+        power=1,
+        normalized=False,
+        min_max_energy_norm=True,
+        norm="slaney",
+        mel_scale="slaney",
+        compression=True
+    )
+    return spectrogram
 
 class HFCDataModule(pl.LightningDataModule):
     def __init__(self, config, model='finder'):
@@ -40,12 +60,13 @@ class HFCDataModule(pl.LightningDataModule):
             self.valid_set,
             batch_size=1,
             shuffle=False,
-            collate_fn=collate_fn,
+            collate_fn=collate_fn_val,
             num_workers=8,
         )
     
     
-    
+def collate_fn_val(batch):
+    return collate_fn(batch, max_len=-1)
 
 def collate_fn(batch, max_len=200):
     # A data tuple has the form:
@@ -65,8 +86,6 @@ def collate_fn(batch, max_len=200):
     f0s = pad_sequence(f0s, max_len=max_len)
     vuvs = pad_sequence(vuvs, max_len=max_len)
     ids = torch.LongTensor(ids)
-    
-
     return mels, f0s, vuvs, ids
 
 def pad_sequence(batch, max_len=200):
@@ -86,7 +105,8 @@ def pad_sequence(batch, max_len=200):
         new_batch.append(cropped_item)
 
     batch = torch.nn.utils.rnn.pad_sequence(batch, batch_first=True, padding_value=0.)
-    batch = batch[:,:max_len]
+    if max_len > 0:
+        batch = batch[:,:max_len]
     return batch
 
 
@@ -183,7 +203,6 @@ def main(hp):
     )
     for data in tqdm(dataloader):
         mel, f0, vuv, speaker_id = data
-        print(f0.shape)
 
 
 if __name__ == '__main__':
