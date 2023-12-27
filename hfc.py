@@ -140,16 +140,15 @@ class HFC(pl.LightningModule):
         self.log('val/combiner_loss', self.combiner_loss, prog_bar=True)
         self.log('val/finder_loss', self.finder_loss, prog_bar=True)
         self.log('val/g_losses', self.g_losses, prog_bar=True)
-        if batch_idx < self.hp.training.log_n_audios:
+        if batch_idx < self.hp.training.log_n_audios and self.hp.training.wandb:
             if not self.hifigan:
                 self.hifigan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-libritts-22050Hz", savedir="hifigan_checkpoints", run_opts={"device": self.mel.device})
             self.log_audio(batch_idx)
     
     def log_audio(self, n):
         # Depends on wandb -- TODO make an option for local or whatever
-        mel = self.controlled.transpose(1,2)
         self.audio = self.hifigan.decode_batch(self.controlled.transpose(1,2))
-        html_file_name = f'outputs/audio_{self.speaker_id}_{n}.html'
+        html_file_name = f'outputs/audio_{int(self.speaker_id)}_{n}.html'
         plottage.save_audio_with_bokeh_plot_to_html(self.audio, self.hp.sr, html_file_name)
         html = wandb.Html(html_file_name)
         #my_table = wandb.Table(columns=["audio_with_plot"], data=[[html], [html]])
