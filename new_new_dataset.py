@@ -31,10 +31,10 @@ def melspect(waveform):
     return spectrogram
 
 class HFCDataModule(pl.LightningDataModule):
-    def __init__(self, config, model='finder'):
+    def __init__(self, config, model='finder', download=True):
         super().__init__()
         self.config = config
-        self.dataset = MyLibri(self.config, download=True)
+        self.dataset = MyLibri(self.config, download=download)
         self.dataset.populate_speaker_idx()
         self.n_speakers = self.dataset.n_speakers
         self.valid_split = self.config.dataset.validation_split
@@ -159,7 +159,8 @@ class MyLibri(datasets.LIBRITTS):
         except FileNotFoundError:
             waveform = self.fe.resample(waveform, sample_rate)
             f0, vuv = self.fe.f0(waveform)
-            mel = self.fe.hifigan_mel_spectrogram(waveform)
+            # mel = self.fe.hifigan_mel_spectrogram(waveform)
+            mel = melspect(waveform)
             def save(obj, file):
                 os.makedirs(os.path.dirname(file), exist_ok=True) # need to create dir if doesn't exist
                 torch.save(obj, file)

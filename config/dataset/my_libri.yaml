@@ -1,4 +1,6 @@
-root: /home/jjw/datasets
+root: ~/datasets
 subset: train-clean-100
 save_as: LibriTTS
 validation_split: 0.05
+rsync: False
+download: True

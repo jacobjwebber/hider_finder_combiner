@@ -9,6 +9,7 @@ import torch.nn.functional as F
 from torch.optim import Adam
 import wandb
 from speechbrain.pretrained import HIFIGAN
+import sysrsync
 
 
 # Local imports
@@ -170,7 +171,16 @@ class HFC(pl.LightningModule):
 @hydra.main(version_base=None, config_path='config', config_name="config")
 def train(config):
 
-    dm = HFCDataModule(config, 'hfc')
+    print('Setting up data module')
+    print('Done')
+    if config.dataset.rsync:
+        print('rsyncing from ', config.dataset.copy_from)
+        sysrsync.sysrsync(
+            os.path.join(config.dataset.copy_from, config.dataset.savename),
+        os.path.join(config.dataset.root, config.dataset.savename))
+        print('done')
+
+    dm = HFCDataModule(config, 'hfc', download=config.dataset.download)
     n_speakers = dm.n_speakers
     hfc = HFC(config, n_speakers)
 
