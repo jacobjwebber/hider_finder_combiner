@@ -2,6 +2,6 @@ copy_from: ~/datasets
 download: False # Don't download on slurm node, not allowed
 subset: train-clean-100
 save_as: LibriTTS
-validation_split: 0.05
-rsync: False
+validation_split: 0.005
+rsync: True
 root: /disk/scratch/s1116548/data

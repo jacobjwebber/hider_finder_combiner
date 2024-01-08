@@ -3,6 +3,31 @@ defaults:
   - hider: rnn
   - finder: rnn
   - combiner: rnn
+  - override hydra/launcher: submitit_local
+  - override hydra/sweeper: optuna
+
+hydra:
+  sweeper:
+    sampler:
+      seed: 123
+    direction: minimize
+    storage: null
+    study_name: lr_g_sweep
+    n_trials: 20
+    n_jobs: 1
+    params:
+      training.lr_g: range(0.00000001,0.0005)
+      training.epochs: 1
+      training.metric: 'combiner_loss'
+
+  launcher:
+    timeout_min: 60
+    cpus_per_task: 8
+    gpus_per_node: 1
+    tasks_per_node: 1
+    mem_gb: 28
+    nodes: 1
+
 
 use_f0: False
 
@@ -11,6 +36,7 @@ training_finder:
   lr: 0.001
 
 training:
+  epochs: 1000
   log_n_audios: 10
   batch_size: 64
   lr_find: False
@@ -20,7 +46,8 @@ training:
   #lr: 0.10964781961431852
   lr_g: 0.001
   lr_f: 0.0001
-  val_check_interval: 10
+  val_check_interval: 500
+  metric: 'combiner_loss'
 
 control_variables: 
   f0_bins: 100

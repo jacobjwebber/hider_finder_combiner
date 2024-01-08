@@ -9,6 +9,7 @@ import dsp
 import hydra
 import lightning.pytorch as pl
 from speechbrain.lobes.models.FastSpeech2 import mel_spectogram
+from pathlib import Path as P
 
 def melspect(waveform):
     """use these exact values for pretrained spect"""
@@ -114,20 +115,21 @@ def pad_sequence(batch, max_len=200):
 class MyLibri(datasets.LIBRITTS):
     def __init__(self, hp, download=False):
         self.hp = hp
-        super().__init__(hp.dataset.root, hp.dataset.subset, hp.dataset.save_as, download)
-        self.root = hp.dataset.root
+        #super().__init__(hp.dataset.root, hp.dataset.subset, hp.dataset.save_as, download)
+        self.root = os.path.expanduser(hp.dataset.root) # torchaudio breaks unless this
+        super().__init__(self.root, hp.dataset.subset, hp.dataset.save_as, False)
         self.fe = dsp.FeatureEngineer(self.hp)
     
     def populate_speaker_idx(self):
 
         # Create map from speaker string to an int index
-        speaker_idx_path = os.path.join(self.root, 'speaker2idx.json')
+        speaker_idx_path = os.path.join(self.root, self.hp.dataset.save_as, 'speaker2idx.json')
         if os.path.exists(speaker_idx_path):
             with open(speaker_idx_path, 'r') as f:
                 self.speaker2idx = json.load(f)
         else:
             self.speaker2idx = {}
-            for n in tqdm(range(len(self)), desc="Populating speaker"):
+            for n in tqdm(range(len(self)), desc="Populating speaker (this should only happen once)"):
                 (_, _, _, _, speaker_id, _, _) = super().__getitem__(n)
 
 

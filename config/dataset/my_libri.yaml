@@ -1,6 +1,6 @@
 root: ~/datasets
 subset: train-clean-100
 save_as: LibriTTS
-validation_split: 0.05
+validation_split: 0.005
 rsync: False
 download: True

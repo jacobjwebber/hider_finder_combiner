@@ -1,4 +1,5 @@
 import hydra
+import os
 
 import lightning.pytorch as pl
 from lightning.pytorch.tuner import Tuner
@@ -49,6 +50,9 @@ class HFC(pl.LightningModule):
         self.g_opt = Adam(self.generator_params, lr=self.hp.training.lr_g, weight_decay=0.00)
         self.f_opt = Adam(self.finder.parameters(), lr=self.hp.training.lr_f)
         #self.lr_schedulers = {'g_opt': self.g_opt, 'f_opt': self.f_opt} TODO
+        #self.g_schedj = torch.optim.lr_scheduler.StepLR(self.g_opt, step_size=50, gamma=0.5) # TODO add this 
+        self.g_schedj = torch.optim.lr_scheduler.ReduceLROnPlateau(self.g_opt, verbose=True)
+        self.f_schedj = torch.optim.lr_scheduler.ReduceLROnPlateau(self.f_opt, verbose=True)
         return [self.g_opt, self.f_opt]
 
 
@@ -123,6 +127,7 @@ class HFC(pl.LightningModule):
         self.clip_gradients(g_opt, gradient_clip_val=self.hp.training.clip, gradient_clip_algorithm="norm")
         g_opt.step()
 
+
     def training_step(self, batch):
         self.set_input(*batch)
         self.optimize_parameters()
@@ -146,6 +151,11 @@ class HFC(pl.LightningModule):
                 self.hifigan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-libritts-22050Hz", savedir="hifigan_checkpoints", run_opts={"device": self.mel.device})
             self.log_audio(batch_idx)
     
+    def on_train_epoch_end(self):
+        # Step learning rate schedulers
+        self.g_schedj.step(self.trainer.callback_metrics['combiner_loss'])
+        self.f_schedj.step(self.trainer.callback_metrics['finder_loss'])
+    
     def log_audio(self, n):
         # Depends on wandb -- TODO make an option for local or whatever
         self.audio = self.hifigan.decode_batch(self.controlled.transpose(1,2))
@@ -156,7 +166,7 @@ class HFC(pl.LightningModule):
         self.logger.log_table('val/audio', columns=['audio_with_plot'], data=[[html], [html]])
 
 
-    def anneal(self):
+    def annmyqueeneal(self):
         # TODO replace with LR scheduler
         self.hp.g_lr *= self.hp.annealing_rate
         self.hp.f_lr *= self.hp.annealing_rate
@@ -172,29 +182,37 @@ class HFC(pl.LightningModule):
 def train(config):
 
     print('Setting up data module')
-    print('Done')
+    # TODO move the below to data module
     if config.dataset.rsync:
+        os.makedirs(config.dataset.root, exist_ok=True)
         print('rsyncing from ', config.dataset.copy_from)
-        sysrsync.sysrsync(
-            os.path.join(config.dataset.copy_from, config.dataset.savename),
-        os.path.join(config.dataset.root, config.dataset.savename))
+        sysrsync.run(
+            source=os.path.join(os.path.expanduser(config.dataset.copy_from), config.dataset.save_as),
+            destination=os.path.join(config.dataset.root, config.dataset.save_as),
+            options=['-a']
+        )
         print('done')
 
     dm = HFCDataModule(config, 'hfc', download=config.dataset.download)
     n_speakers = dm.n_speakers
     hfc = HFC(config, n_speakers)
+    print('Done')
 
     if config.training.wandb:
         logger = pl.loggers.WandbLogger(project="hfc_main")
     else:
         logger = None
     trainer = pl.Trainer(logger=logger,
-                         val_check_interval=10,
+                         check_val_every_n_epoch=1,
+                         max_epochs=config.training.epochs,
+                         #val_check_interval=config.training.val_check_interval,
                         ) 
 
     # finds learning rate automatically
     # sets hparams.lr or hparams.learning_rate to that learning rate
     trainer.fit(hfc, datamodule=dm)
+
+    return trainer.callback_metrics[config.training.metric]
 
 if __name__ == '__main__':
     train()
