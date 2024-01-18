@@ -1,9 +1,9 @@
 defaults:
-  - dataset: my_libri
+  - dataset: libritts_slurm
   - hider: rnn
   - finder: rnn
   - combiner: rnn
-  - override hydra/launcher: submitit_local
+  - override hydra/launcher: submitit_slurm
   - override hydra/sweeper: optuna
 
 hydra:
@@ -11,25 +11,27 @@ hydra:
     sampler:
       seed: 123
     direction: minimize
-    storage: null
     study_name: lr_g_sweep
-    n_trials: 20
-    n_jobs: 1
+    n_trials: 12
+    storage: sqlite:///optuna.db #https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/004_distributed.html#distributed
+    n_jobs: 12
     params:
       training.lr_g: range(0.00000001,0.0005)
       training.epochs: 1
       training.metric: 'combiner_loss'
+      
 
   launcher:
-    timeout_min: 60
-    cpus_per_task: 8
-    gpus_per_node: 1
-    tasks_per_node: 1
-    mem_gb: 28
-    nodes: 1
+    timeout_min: 240
+    cpus_per_gpu: 8
+    gpus_per_task: 1
+    mem_gb: 16
+    array_parallelism: 12
+    tasks_per_node: 5
+    #nodes: 1
 
 
-use_f0: False
+use_f0: True
 
 training_finder:
   batch_size: 128

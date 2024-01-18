@@ -117,7 +117,7 @@ class MyLibri(datasets.LIBRITTS):
         self.hp = hp
         #super().__init__(hp.dataset.root, hp.dataset.subset, hp.dataset.save_as, download)
         self.root = os.path.expanduser(hp.dataset.root) # torchaudio breaks unless this
-        super().__init__(self.root, hp.dataset.subset, hp.dataset.save_as, False)
+        super().__init__(self.root, hp.dataset.subset, hp.dataset.save_as, download=download)
         self.fe = dsp.FeatureEngineer(self.hp)
     
     def populate_speaker_idx(self):
