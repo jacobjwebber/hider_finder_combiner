@@ -2,7 +2,6 @@ import hydra
 import os
 
 import lightning.pytorch as pl
-from lightning.pytorch.tuner import Tuner
 
 import torch
 import torch.nn as nn
@@ -62,10 +61,6 @@ class HFC(pl.LightningModule):
         f0 = f0.squeeze(-1)
         is_voiced = is_voiced.squeeze(-1)
         batch_size, seq_len = f0.shape
-        #print(f'f0 shape: {f0.shape}')
-        #print(f'is_voiced shape: {is_voiced.shape}')
-        #print(f'mel shape: {mel.shape}')
-        #print(f'speaker_id shape: {speaker_id.shape}')
 
         # Two versions --- one matrix onehot and one array of indices
         #self.cv_index = dsp.onehot_index(control_variable, self.hp.cv_bins, self.hp.cv_range)
@@ -84,27 +79,32 @@ class HFC(pl.LightningModule):
     def backward_F(self):
         # Attempt to predict the control variable from the hidden repr
         pred_f0, pred_speaker_id = self.finder(self.hidden.detach())
-        batch_size, n_speakers = pred_speaker_id.shape
-        # Need to combine batch and sequence for CE loss
-        self.finder_loss = self.f_criterion(pred_speaker_id, self.speaker_id)
 
-    def backward_G(self):
+        self.finder_loss_id = self.f_criterion(pred_speaker_id, self.speaker_id)
+        # pred_f0 = (Batch x seq_len x f0_bins) -- need to put seq_len at the end for loss
+        self.finder_loss_f0 = self.f_criterion(pred_f0.transpose(1,2), self.f0_idx)
+        self.finder_loss = self.finder_loss_f0 + self.finder_loss_id
+
+    def backward_G(self, adversarial=False):
         # G is hider and combiner together
 
-        # newly updated finder can generate a better training signal
-        pred_f0, pred_speaker_id = self.finder(self.hidden)
-        # Softmax converts to probabilities, which we can use for leakage loss
-        #print(pred_speaker_id.shape)
-        self.pred_speaker_id = F.softmax(pred_speaker_id, dim=1)
+        if adversarial:
+            # newly updated finder can generate a better training signal
+            pred_f0, pred_speaker_id = self.finder(self.hidden)
+            # Softmax converts to probabilities, which we can use for leakage loss
+            #print(pred_speaker_id.shape)
+            self.pred_speaker_id = F.softmax(pred_speaker_id, dim=1)
+            self.leakage_loss_id = torch.var(self.pred_speaker_id, 1).mean()
+        else:
+            self.leakage_loss_id = 0.
 
         # Use output from forward earlier to do mse between resynthed, controlled output and
         # ground truth input
         #print(self.controlled.shape, self.mel.shape)
         self.combiner_loss = self.g_criterion(self.controlled, self.mel.transpose(1,2))
 
-        self.leakage_loss_id = torch.var(self.pred_speaker_id, 1)
         # Use mean to reduce along all timesteps
-        self.leakage_loss = self.leakage_loss_id.mean() # + leakage los for f0
+        self.leakage_loss = self.leakage_loss_id # + leakage los for f0
         self.g_losses = self.combiner_loss + self.hp.model.beta * self.leakage_loss
 
     def optimize_parameters(self):
@@ -120,12 +120,16 @@ class HFC(pl.LightningModule):
 
 
         # Train hider and combiner with updated Finder for leakage loss
-        self.backward_G()
+        self.backward_G(adversarial=self.global_step > self.hp.training.adversarial_start)
         g_opt.zero_grad()
         self.manual_backward(self.g_losses)
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
         self.clip_gradients(g_opt, gradient_clip_val=self.hp.training.clip, gradient_clip_algorithm="norm")
         g_opt.step()
+
+        if self.global_step % self.hp.training.scheduler_step == 0:
+            self.g_schedj.step(self.combiner_loss)
+            self.f_schedj.step(self.finder_loss)
 
 
     def training_step(self, batch):
@@ -166,24 +170,13 @@ class HFC(pl.LightningModule):
         self.logger.log_table('val/audio', columns=['audio_with_plot'], data=[[html], [html]])
 
 
-    def annmyqueeneal(self):
-        # TODO replace with LR scheduler
-        self.hp.g_lr *= self.hp.annealing_rate
-        self.hp.f_lr *= self.hp.annealing_rate
-        print('Annealing', self.hp.f_lr, self.hp.g_lr)
-        generator_params = list(self.hider.parameters()) + list(self.combiner.parameters())
-        self.g_opt = Adam(generator_params, lr=self.hp.g_lr, weight_decay=0.00)
-        self.f_opt = Adam(self.finder.parameters(), lr=self.hp.f_lr, weight_decay=0.00)
-    
-
-
 
 @hydra.main(version_base=None, config_path='config', config_name="config")
 def train(config):
 
     print('Setting up data module')
     # TODO move the below to data module
-    if config.dataset.rsync:
+    if False: #config.dataset.rsync:
         os.makedirs(config.dataset.root, exist_ok=True)
         print('rsyncing from ', config.dataset.copy_from)
         sysrsync.run(
@@ -203,7 +196,7 @@ def train(config):
     else:
         logger = None
     trainer = pl.Trainer(logger=logger,
-                         check_val_every_n_epoch=1,
+                         check_val_every_n_epoch=10,
                          max_epochs=config.training.epochs,
                          #val_check_interval=config.training.val_check_interval,
                         ) 

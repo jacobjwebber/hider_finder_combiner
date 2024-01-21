@@ -3,7 +3,7 @@ defaults:
   - hider: rnn
   - finder: rnn
   - combiner: rnn
-  - override hydra/launcher: submitit_slurm
+  #- override hydra/launcher: submitit_local
   - override hydra/sweeper: optuna
 
 hydra:
@@ -16,19 +16,19 @@ hydra:
     storage: sqlite:///optuna.db #https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/004_distributed.html#distributed
     n_jobs: 12
     params:
-      training.lr_g: range(0.00000001,0.0005)
+      training.lr_g: range(0.00000001, 0.0005)
       training.epochs: 1
       training.metric: 'combiner_loss'
       
 
-  launcher:
-    timeout_min: 240
-    cpus_per_gpu: 8
-    gpus_per_task: 1
-    mem_gb: 16
-    array_parallelism: 12
-    tasks_per_node: 5
-    #nodes: 1
+#  launcher:
+#    timeout_min: 240
+#    cpus_per_gpu: 8
+#    gpus_per_task: 1
+#    mem_gb: 16
+#    array_parallelism: 12
+#    tasks_per_node: 5
+#    #nodes: 1
 
 
 use_f0: True
@@ -46,10 +46,13 @@ training:
   clip: 0.5
   #lr: 0.007
   #lr: 0.10964781961431852
-  lr_g: 0.001
+  lr_g: 0.0005
   lr_f: 0.0001
   val_check_interval: 500
   metric: 'combiner_loss'
+  adversarial_start: 1000
+  scheduler_step: 100
+
 
 control_variables: 
   f0_bins: 100

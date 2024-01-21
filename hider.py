@@ -15,9 +15,9 @@ class Hider(nn.Module):
         self.hidden_size = hp.hider.rnn_size
         self.dropout = hp.hider.drop
         self.denoising = hp.hider.denoising
-        kernel_size = 10
+        kernel_size = 9
         rnn_mult = hp.hider.rnn_mult
-        padding = 0
+        padding = 4
         stride = 1
         dilation = 1
         self.conv_out_width = int(
@@ -28,7 +28,7 @@ class Hider(nn.Module):
         self.denoising = nn.Dropout(self.denoising)
         self.residual = nn.Linear(self.input_width, self.conv_out_width)
         self.fc1 = nn.Linear(self.conv_out_width, self.conv_out_width)
-        self.conv = nn.Conv1d(1, 1, kernel_size, dilation=dilation, stride=stride, padding=padding) # TODO convert to 2d
+        self.conv = nn.Conv2d(1, 1, kernel_size, dilation=dilation, stride=stride, padding=padding) # TODO convert to 2d
         self.rnn = nn.GRU(self.conv_out_width, self.hidden_size, self.n_layers, dropout=rnn_mult * hp.hider.drop, batch_first=True)
         self.lin = nn.Linear(self.hidden_size, self.output_width)
 
@@ -37,8 +37,7 @@ class Hider(nn.Module):
         batch_size, width, length = shape
         #print(f'length = {length}')
         # Arrange shape so that middle dimension is 1 -- number of conv channels
-        # batch and length are squished to one dimension
-        x = spectrograms.reshape(batch_size * length, 1, -1)
+        x = spectrograms.transpose(1,2).unsqueeze(1)
         # Pass through x as only modified by linear layer -- possibly bypassing conv
         x = F.relu(self.conv(x)) + F.relu(self.residual(x))
         x = self.dropout(F.relu(x))
