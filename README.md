@@ -9,10 +9,10 @@ pip install sqlalchemy==1.4.46 # bug with optuna breaks newest sqalchemy
 ```
 
 ## TODO tomorrow
+sort out validation to log hidden and mels and work real nice
 TODO pretrain individual models?
 TODO look up sota image to image, speaker ID models, conditional spec/image gen models?
 
 work on a CSTR machine? -- DONE
 align val set for hifigan and me --- DONE
-sort out validation to log hidden and mels and work real nice
 log lr

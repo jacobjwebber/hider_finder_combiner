@@ -145,6 +145,7 @@ class HFC(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         self.set_input(*batch)
+        self.new_speaker = self.speaker_id + 1 % self.n_speakers
         self.forward()
         self.backward_G()
         self.backward_F()
@@ -155,6 +156,7 @@ class HFC(pl.LightningModule):
         if batch_idx < self.hp.training.log_n_audios and self.hp.training.wandb:
             if not self.hifigan:
                 self.hifigan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-libritts-22050Hz", savedir="hifigan_checkpoints", run_opts={"device": self.mel.device})
+            self.new_controlled = self.combiner((self.hidden, self.new_speaker, self.f0_idx, self.is_voiced))
             self.log_audio(batch_idx)
     
     def on_train_epoch_end(self):
@@ -164,12 +166,39 @@ class HFC(pl.LightningModule):
     
     def log_audio(self, n):
         # Depends on wandb -- TODO make an option for local or whatever
-        self.audio = self.hifigan.decode_batch(self.controlled.transpose(1,2))
+        controlled = self.controlled.transpose(1,2)
+        new_controlled = self.new_controlled.transpose(1,2)
+        audio = self.hifigan.decode_batch(controlled)
+        audio_changed = self.hifigan.decode_batch(new_controlled)
+
+
+        self.logger.log_image('gt_spect', [self.mel.squeeze().cpu().numpy()], step=self.global_step)
+        self.logger.log_image('copy_spect', [controlled.squeeze().cpu().numpy()], step=self.global_step)
+        self.logger.log_image('modified_spect', [new_controlled.squeeze().cpu().numpy()], step=self.global_step)
+
+
+        #self.log('gt_audio': wandb.Audio(self.mel)) TODO
+        metrics = {'audios': [
+            wandb.Audio(audio.squeeze().cpu().numpy(), sample_rate=self.hp.sr, caption='unmodified'), 
+            wandb.Audio(audio_changed.squeeze().cpu().numpy(), sample_rate=self.hp.sr, caption='modified')
+        ]}
+        self.logger.log_metrics(metrics, step=self.global_step)
+        #self.logger.log_audio('copy_audio', audio.squeeze().cpu().numpy(), sample_rate=self.hp.sr)
+        #self.logger.log_audio('modified_audio', audio_changed.squeeze().cpu().numpy(), sample_rate=self.hp.sr)
+        '''
         html_file_name = f'outputs/audio_{int(self.speaker_id)}_{n}.html'
-        plottage.save_audio_with_bokeh_plot_to_html(self.audio, self.hp.sr, html_file_name)
+        html_file_name_changed = f'outputs/audio_changed_{int(self.speaker_id)}_{n}.html'
+        plottage.save_audio_with_bokeh_plot_to_html(audio, self.hp.sr, html_file_name)
+        plottage.save_audio_with_bokeh_plot_to_html(audio_changed, self.hp.sr, html_file_name)
         html = wandb.Html(html_file_name)
-        #my_table = wandb.Table(columns=["audio_with_plot"], data=[[html], [html]])
-        self.logger.log_table('val/audio', columns=['audio_with_plot'], data=[[html], [html]])
+        html_c = wandb.Html(html_file_name_changed)
+
+        my_table = wandb.Table(columns=["audio_unchanged"], data=[[html], [html]])
+        my_table = wandb.Table(columns=["audio_changed"], data=[[html_c], [html_c]])
+
+        self.logger.log_table('val/audio', columns=['audio_unchanged'], data=[[html], [html]])
+        self.logger.log_table('val/audio_changed', columns=['audio_changed'], data=[[html_c], [html_c]])
+        '''
 
 
 
@@ -198,7 +227,8 @@ def train(config):
     else:
         logger = None
     trainer = pl.Trainer(logger=logger,
-                         check_val_every_n_epoch=config.training.val_check_interval,
+                         #check_val_every_n_epoch=config.training.val_check_interval,
+                         val_check_interval=10,
                          max_epochs=config.training.epochs,
                          strategy='ddp_find_unused_parameters_true',
                         ) 
