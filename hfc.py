@@ -200,6 +200,7 @@ def train(config):
     trainer = pl.Trainer(logger=logger,
                          check_val_every_n_epoch=config.training.val_check_interval,
                          max_epochs=config.training.epochs,
+                         strategy='ddp_find_unused_parameters_true',
                         ) 
 
     # finds learning rate automatically
