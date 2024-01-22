@@ -1,7 +1,7 @@
 import random
 import torch
 from torchaudio import datasets
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, random_split, Subset
 import json
 import os
 from tqdm import tqdm
@@ -31,6 +31,33 @@ def melspect(waveform):
     )
     return spectrogram
 
+def load_split_from_json(train_json_path, valid_json_path, test_json_path, dataset):
+    # Downloaded splits from google drive linked to at the bottom of this page https://huggingface.co/speechbrain/tts-hifigan-libritts-22050Hz
+    # Need to match training split of hifigan for any audio domain validation results to be accurate
+    with open(train_json_path, 'r') as f:
+        train = json.load(f)
+    with open(valid_json_path, 'r') as f:
+        valid = json.load(f)
+    with open(test_json_path, 'r') as f:
+        test = json.load(f)
+    
+    split_indices = {'train': [], 'valid': [], 'test': []}
+    for i, datum in enumerate(tqdm(dataset)):
+        utterance_id = datum['utterance']
+        if utterance_id in train:
+            split_indices['train'].append(i)
+        elif utterance_id in valid:
+            split_indices['valid'].append(i)
+        elif utterance_id in test:
+            split_indices['test'].append(i)
+        else:
+            print('oh fuck')
+            exit()
+    
+    json.dump(split_indices, open('split_indices.json', 'w'))
+
+    return train, valid, test
+
 class HFCDataModule(pl.LightningDataModule):
     def __init__(self, config, model='finder', download=True):
         super().__init__()
@@ -43,8 +70,12 @@ class HFCDataModule(pl.LightningDataModule):
             self.batch_size = self.config.training_finder.batch_size
         elif model == 'hfc':
             self.batch_size = self.config.training.batch_size
-        
-        self.valid_set, self.train_set = random_split(self.dataset, [self.valid_split, 1. - self.valid_split], generator=torch.Generator().manual_seed(42))
+
+        # TODO fix the below so that it reads from a file or else random splits
+        splits = json.load(open('split_indices.json', 'r'))
+        self.valid_set = Subset(self.dataset, splits['valid'][:config.dataset.valid_size])
+        self.train_set = Subset(self.dataset, splits['train'])
+        #self.valid_set, self.train_set = random_split(self.dataset, [self.valid_split, 1. - self.valid_split], generator=torch.Generator().manual_seed(42))
 
     
     def train_dataloader(self):
@@ -195,6 +226,10 @@ def main(hp):
     
     dataset = MyLibri(hp, download=True)
     dataset.populate_speaker_idx()
+
+    # The below was only done once -- moving from hifigan split json to my own
+    #load_split_from_json(hp.dataset.train_json, hp.dataset.valid_json, hp.dataset.test_json, dataset)
+
     # load speaker2ix from json file if it exists
 
     # Create DataLoader

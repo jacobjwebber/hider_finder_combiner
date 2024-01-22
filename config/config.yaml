@@ -1,5 +1,5 @@
 defaults:
-  - dataset: libritts_slurm
+  - dataset: my_libri
   - hider: rnn
   - finder: rnn
   - combiner: rnn

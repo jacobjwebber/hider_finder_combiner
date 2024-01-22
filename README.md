@@ -9,8 +9,9 @@ pip install sqlalchemy==1.4.46 # bug with optuna breaks newest sqalchemy
 ```
 
 TODO tomorrow
-get rid of rsync stuff
 work on a CSTR machine?
 pretrain individual models?
 look up sota image to image, speaker ID models, conditional spec/image gen models?
-align val set for hifigan and me
+align val set for hifigan and me --- DONE
+sort out validation to log hidden and mels and work real nice
+log lr

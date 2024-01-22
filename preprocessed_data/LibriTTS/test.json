@@ -1,0 +1,8 @@
+{
+  "5684_46243_000004_000000": {
+    "wav": "{data_root}/train-clean-360/LibriTTS/train-clean-360/5684/46243/5684_46243_000004_000000.wav",
+    "spk_id": "5684",
+    "label": "With our beautiful English butterflies, the admiral, peacock, and painted lady (Vanessae), as well as many others, the sexes are alike.",
+    "segment": true
+  }
+}
