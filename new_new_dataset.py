@@ -65,7 +65,7 @@ class HFCDataModule(pl.LightningDataModule):
         self.dataset = MyLibri(self.config, download=download)
         self.dataset.populate_speaker_idx()
         self.n_speakers = self.dataset.n_speakers
-        self.valid_split = self.config.dataset.validation_split
+        #self.valid_split = self.config.dataset.validation_split
         if model == 'finder':
             self.batch_size = self.config.training_finder.batch_size
         elif model == 'hfc':

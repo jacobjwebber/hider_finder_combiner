@@ -109,6 +109,8 @@ class HFC(pl.LightningModule):
 
     def optimize_parameters(self):
         g_opt, f_opt = self.optimizers()
+        self.log('learning_rate_g', g_opt.param_groups[0]['lr'])
+        self.log('learning_rate_f', f_opt.param_groups[0]['lr'])
         # Generate hidden repr and output
         # Train finder
         self.forward()
@@ -196,9 +198,8 @@ def train(config):
     else:
         logger = None
     trainer = pl.Trainer(logger=logger,
-                         check_val_every_n_epoch=10,
+                         check_val_every_n_epoch=config.training.val_check_interval,
                          max_epochs=config.training.epochs,
-                         #val_check_interval=config.training.val_check_interval,
                         ) 
 
     # finds learning rate automatically

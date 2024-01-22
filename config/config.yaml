@@ -48,7 +48,7 @@ training:
   #lr: 0.10964781961431852
   lr_g: 0.0005
   lr_f: 0.0001
-  val_check_interval: 500
+  val_check_interval: 10 # in epochs
   metric: 'combiner_loss'
   adversarial_start: 1000
   scheduler_step: 100
