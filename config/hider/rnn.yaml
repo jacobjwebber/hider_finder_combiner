@@ -1,5 +1,5 @@
     ## Hider
-    rnn_size : 400 
+    rnn_size : 200 
     rnn_mult: 3. # multiply dropout by this number when in rnn
     n_layers : 3 
     drop : 0.01

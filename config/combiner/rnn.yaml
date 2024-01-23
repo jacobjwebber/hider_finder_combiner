@@ -1,4 +1,4 @@
 ## Combiner
-rnn_size: 1200
-n_layers: 5
+rnn_size: 800
+n_layers: 3
 drop: 0.01

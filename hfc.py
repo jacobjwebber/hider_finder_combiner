@@ -227,8 +227,7 @@ def train(config):
     else:
         logger = None
     trainer = pl.Trainer(logger=logger,
-                         #check_val_every_n_epoch=config.training.val_check_interval,
-                         val_check_interval=10,
+                         check_val_every_n_epoch=config.training.val_check_interval,
                          max_epochs=config.training.epochs,
                          strategy='ddp_find_unused_parameters_true',
                         ) 
