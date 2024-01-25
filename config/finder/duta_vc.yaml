@@ -1,0 +1,10 @@
+# "average voice" encoder parameters
+name: 'duta_vc'
+channels: 192
+filters: 768
+layers: 6
+kernel: 3
+dropout: 0.1
+heads: 2
+window_size: 4
+enc_dim: 128
