@@ -34,7 +34,7 @@ hydra:
 use_f0: True
 
 training_finder:
-  batch_size: 128
+  batch_size: 32
   lr: 0.001
 
 training:
@@ -52,6 +52,7 @@ training:
   metric: 'combiner_loss'
   adversarial_start: 10000
   scheduler_step: 500
+  max_len: 100
 
 
 control_variables: 

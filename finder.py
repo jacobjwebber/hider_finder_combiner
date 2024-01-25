@@ -15,6 +15,8 @@ import dsp
 import hydra
 
 from new_new_dataset import HFCDataModule
+from duta_vc.encoder import MelEncoder, sequence_mask
+from duta_vc.postnet import PostNet
 
 
 class Finder(pl.LightningModule):
@@ -31,6 +33,18 @@ class Finder(pl.LightningModule):
                                    hparams.finder.rnn.n_layers)
         elif hparams.finder.name == 'transformer':
             raise NotImplementedError
+        elif hparams.finder.name == 'duta_vc':
+            self.model = DuTaFinder(hparams.num_mels,
+                                    hparams.finder.channels,
+                                    hparams.finder.filters,
+                                    hparams.finder.heads,
+                                    hparams.finder.layers,
+                                    hparams.finder.kernel, 
+                                    hparams.finder.dropout, 
+                                    hparams.finder.window_size, 
+                                    hparams.finder.enc_dim,
+                                    n_speakers, 
+                                    hparams.control_variables.f0_bins)
         else:
             raise NotImplementedError
 
@@ -103,6 +117,32 @@ class TransformerFinder(nn.Module):
     def __init__(self):
         pass
 
+# "average voice" encoder as the module parameterizing the diffusion prior
+class DuTaFinder(torch.nn.Module):
+    def __init__(self, n_feats, channels, filters, heads, layers, kernel, 
+                 dropout, window_size, dim, n_speakers, f0_bins):
+        super(DuTaFinder, self).__init__()
+        self.encoder = MelEncoder(n_feats, channels, filters, heads, layers, 
+                                  kernel, dropout, window_size)
+        self.postnet = PostNet(dim)
+        self.f0_lin = nn.Linear(n_feats, f0_bins)
+        self.f0_projector = nn.Linear(n_feats, 100)
+        self.speaker_id_lin = nn.Linear(n_feats, n_speakers)
+
+    def forward(self, x):
+        # x: [batch, n_mels, n_frames]
+        x = x.transpose(1,2)
+        mask = sequence_mask(torch.Tensor([batch.shape[1] for batch in x])).unsqueeze(1).to(x.dtype).to(x.device)
+        #print(batch, n_mels, n_frames)
+        #mask = torch.ones(batch, 1, n_frames, device=x.device)
+        z = self.encoder(x, mask)
+        out = self.postnet(z, mask).transpose(1,2)
+
+        f0_prediction = self.f0_lin(out)
+        # use mean to reduce time dimensionality
+        speaker_prediction = self.speaker_id_lin(torch.mean(out, dim=1))
+        return f0_prediction, speaker_prediction
+
 
 class RNNFinder(nn.Module):
     def __init__(self, interior_size, input_width, f0_bins, n_speakers, n_layers, dropout=0.1):
@@ -135,14 +175,17 @@ def train(config):
 
     finder = Finder(config, n_speakers)
 
-    logger = pl.loggers.wandb.WandbLogger(project="hfc_finder")
+    if config.training.wandb:
+        logger = pl.loggers.wandb.WandbLogger(project="hfc_finder")
+    else:
+        logger = None
     trainer = pl.Trainer(logger=logger, gradient_clip_val=0.5, detect_anomaly=True)
     # Create a Tuner
-    #tuner = Tuner(trainer)
+    tuner = Tuner(trainer)
 
     # finds learning rate automatically
     # sets hparams.lr or hparams.learning_rate to that learning rate
-    #tuner.lr_find(finder, datamodule=dm)
+    tuner.lr_find(finder, datamodule=dm)
     trainer.fit(finder, datamodule=dm,)
 
 
