@@ -179,13 +179,15 @@ def train(config):
         logger = pl.loggers.wandb.WandbLogger(project="hfc_finder")
     else:
         logger = None
-    trainer = pl.Trainer(logger=logger, gradient_clip_val=0.5, detect_anomaly=True)
+    trainer = pl.Trainer(logger=logger, gradient_clip_val=0.5, detect_anomaly=True,
+                         strategy='ddp_find_unused_parameters_true',
+    )
     # Create a Tuner
-    tuner = Tuner(trainer)
+    #tuner = Tuner(trainer)
 
     # finds learning rate automatically
     # sets hparams.lr or hparams.learning_rate to that learning rate
-    tuner.lr_find(finder, datamodule=dm)
+    #tuner.lr_find(finder, datamodule=dm)
     trainer.fit(finder, datamodule=dm,)
 
 
