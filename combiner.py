@@ -18,7 +18,7 @@ class Combiner(nn.Module):
         speaker_emb_dim = hp.control_variables.speaker_embedding_dim
 
         self.f0_embedding = nn.Embedding(f0_dim, f0_dim)
-        self.speaker_embedding = nn.Embedding(n_speakers, speaker_emb_dim) # TODO replace with real speaker embedding?
+        #self.speaker_embedding = nn.Embedding(n_speakers, speaker_emb_dim) # TODO replace with real speaker embedding?
         self.dropout = nn.Dropout(hp.combiner.drop)
 
         if self.use_f0:
@@ -39,7 +39,7 @@ class Combiner(nn.Module):
         self.lin = nn.Linear(self.hidden_size, hp.num_mels)
 
     def forward(self, features):
-        spectral, speaker_id, f0, is_voiced = features
+        spectral, speaker_id, spkr_emb, f0, is_voiced = features
 
         batch_size = spectral.shape[0]
         seq_length = spectral.shape[1]
@@ -49,8 +49,9 @@ class Combiner(nn.Module):
 
         # Using f0 onehot instead of embedding. TODO use embedding instead
         #print(f0.max())
-        speaker_id = self.speaker_embedding(speaker_id)
-        speaker_id = speaker_id.unsqueeze(1).repeat(1, seq_length, 1)
+        #speaker_id = self.speaker_embedding(speaker_id)
+        speaker_id = spkr_emb.squeeze(1)
+        speaker_id = speaker_id.repeat(1, seq_length, 1)
 
         noise = torch.rand((batch_size, seq_length, self.noise_width), device=spectral.device)
 

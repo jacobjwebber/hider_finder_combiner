@@ -59,7 +59,7 @@ control_variables:
   f0_bins: 100
   f0_min: 60
   f0_max: 400
-  speaker_embedding_dim: 512
+  speaker_embedding_dim: 192
 
 # For hifigan mels
 num_mels: 80

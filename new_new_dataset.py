@@ -9,6 +9,7 @@ import dsp
 import hydra
 import lightning.pytorch as pl
 from speechbrain.lobes.models.FastSpeech2 import mel_spectogram
+from speechbrain.pretrained import MelSpectrogramEncoder
 from pathlib import Path as P
 
 def melspect(waveform):
@@ -104,7 +105,7 @@ def collate_fn(batch, max_len=200):
     # A data tuple has the form:
     # waveform, sample_rate, label, speaker_id, utterance_number
 
-    mels, f0s, ids, vuvs = [], [], [], []
+    mels, f0s, ids, vuvs, spkr_embs = [], [], [], [], []
 
     # Gather in lists, and encode labels as indices
     for sample in batch:
@@ -112,13 +113,15 @@ def collate_fn(batch, max_len=200):
         f0s += [sample['f0']]
         vuvs += [sample['vuv']]
         ids += [sample['speaker']]
+        spkr_embs += [sample['spkr_emb']]
 
     # Group the list of tensors into a batched tensor
     mels = pad_sequence(mels, max_len=max_len)
     f0s = pad_sequence(f0s, max_len=max_len)
     vuvs = pad_sequence(vuvs, max_len=max_len)
     ids = torch.LongTensor(ids)
-    return mels, f0s, vuvs, ids
+    spkr_embs = torch.stack(spkr_embs)
+    return mels, f0s, vuvs, ids, spkr_embs
 
 def pad_sequence(batch, max_len=200):
     batch = [item.t() for item in batch]
@@ -150,6 +153,7 @@ class MyLibri(datasets.LIBRITTS):
         self.root = os.path.expanduser(hp.dataset.root) # torchaudio breaks unless this
         super().__init__(self.root, hp.dataset.subset, hp.dataset.save_as, download=download)
         self.fe = dsp.FeatureEngineer(self.hp)
+        self.spkr_emb_encoder = None
     
     def populate_speaker_idx(self):
 
@@ -189,17 +193,26 @@ class MyLibri(datasets.LIBRITTS):
             mel = torch.load(file.format('mel'))
             f0 = torch.load(file.format('f0'))
             vuv = torch.load(file.format('vuv'))
+            spkr_emb = torch.load(file.format('spkr_emb'))
         except FileNotFoundError:
             waveform = self.fe.resample(waveform, sample_rate)
             f0, vuv = self.fe.f0(waveform)
             # mel = self.fe.hifigan_mel_spectrogram(waveform)
             mel = melspect(waveform)
+            if not self.spkr_emb_encoder:
+                self.spkr_emb_encoder = MelSpectrogramEncoder.from_hparams(
+                    source="speechbrain/spkrec-ecapa-voxceleb-mel-spec", 
+                    savedir="spk_emb_encoder_checkpoints", 
+                    run_opts={"device": "cpu"})
+            #mel16 = torch.nn.functional.interpolate(mel.unsqueeze(0), scale_factor=16000/22050)
+            spkr_emb = self.spkr_emb_encoder.encode_mel_spectrogram(mel)
             def save(obj, file):
                 os.makedirs(os.path.dirname(file), exist_ok=True) # need to create dir if doesn't exist
                 torch.save(obj, file)
             save(mel, file.format('mel'))
             save(f0, file.format('f0'))
             save(vuv, file.format('vuv'))
+            save(spkr_emb, file.format('spkr_emb'))
 
         f0, vuv, mel = self.fe.crop_to_shortest(f0, vuv, mel)
         speaker_id = self.speaker2idx[str(speaker_id)]
@@ -215,6 +228,7 @@ class MyLibri(datasets.LIBRITTS):
             'f0': f0,
             'mel': mel,
             'vuv': vuv,
+            'spkr_emb': spkr_emb,
         }
 
 
@@ -240,7 +254,7 @@ def main(hp):
         num_workers=10,
     )
     for data in tqdm(dataloader):
-        mel, f0, vuv, speaker_id = data
+        mel, f0, vuv, speaker_id, spkr_emb = data
 
 
 if __name__ == '__main__':

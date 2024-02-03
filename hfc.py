@@ -10,6 +10,7 @@ from torch.optim import Adam
 import wandb
 from speechbrain.pretrained import HIFIGAN
 import sysrsync
+from pathlib import Path as P
 
 
 # Local imports
@@ -55,7 +56,7 @@ class HFC(pl.LightningModule):
         return [self.g_opt, self.f_opt]
 
 
-    def set_input(self, mel, f0, is_voiced, speaker_id):
+    def set_input(self, mel, f0, is_voiced, speaker_id, spkr_emb):
 
         # Find the shape of the onehots for the cv
         f0 = f0.squeeze(-1)
@@ -69,12 +70,13 @@ class HFC(pl.LightningModule):
         self.f0_idx = dsp.bin_tensor(f0, self.f0_bins, self.hp.control_variables.f0_min, self.hp.control_variables.f0_max)
         self.is_voiced = is_voiced.float().unsqueeze(2)
         self.mel = mel.float().transpose(1,2)
+        self.spkr_emb = spkr_emb
 
 
     def forward(self):
         """Uses hider network to generate hidden representation"""
         self.hidden = self.hider(self.mel)
-        self.controlled = self.combiner((self.hidden, self.speaker_id, self.f0_idx, self.is_voiced))
+        self.controlled = self.combiner((self.hidden, self.speaker_id, self.spkr_emb, self.f0_idx, self.is_voiced))
 
     def backward_F(self):
         # Attempt to predict the control variable from the hidden repr
@@ -145,7 +147,7 @@ class HFC(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         self.set_input(*batch)
-        self.new_speaker = self.speaker_id + 1 % self.n_speakers
+        self.new_speaker = torch.load(P(self.hp.dataset.root)/P(self.hp.dataset.save_as)/ P('spkr_emb/254/12312/254_12312_000004_000000.pt')).unsqueeze(0)
         self.forward()
         self.backward_G()
         self.backward_F()
