@@ -22,6 +22,9 @@ from combiner import Combiner
 from new_new_dataset import HFCDataModule
 import plottage
 
+os.environ['TRANSFORMERS_CACHE'] = './cache/transformers'
+os.environ['WANDB_CACHE_DIR'] = './cache/wand'
+
 class HFC(pl.LightningModule):
     """ An implementation of the Hider Finder Combiner architecture for
     arbitrary control of speech signals """
@@ -44,6 +47,7 @@ class HFC(pl.LightningModule):
         self.g_criterion = nn.MSELoss()
         # Ignore (for now) index associated with unvoiced regions
         self.f_criterion = nn.CrossEntropyLoss()
+        print('n_speakers = ', n_speakers)
 
     def configure_optimizers(self):
         # Define params that generate during synthesis as 'generator' (g)
@@ -86,7 +90,7 @@ class HFC(pl.LightningModule):
         self.finder_loss_id = self.f_criterion(pred_speaker_id, self.speaker_id)
         # pred_f0 = (Batch x seq_len x f0_bins) -- need to put seq_len at the end for loss
         self.finder_loss_f0 = self.f_criterion(pred_f0.transpose(1,2), self.f0_idx)
-        self.finder_loss = self.finder_loss_f0 + self.finder_loss_id
+        self.finder_loss = 0. * self.finder_loss_f0 + self.finder_loss_id
 
     def backward_G(self, adversarial=False):
         # G is hider and combiner together
@@ -97,7 +101,7 @@ class HFC(pl.LightningModule):
             # Softmax converts to probabilities, which we can use for leakage loss
             #print(pred_speaker_id.shape)
             self.pred_speaker_id = F.softmax(pred_speaker_id, dim=1)
-            self.leakage_loss_id = torch.var(self.pred_speaker_id, 1).mean()
+            self.leakage_loss_id = torch.var(self.pred_speaker_id, 1).mean() * self.n_speakers
         else:
             self.leakage_loss_id = 0.
 
@@ -246,7 +250,7 @@ def train(config):
         logger = None
     
     checkpointers = [
-        ModelCheckpoint(monitor='val_g_losses', filename='checkpoint-{epoch:02d}-{val_g_losses:.2f}', save_top_k=10),
+        ModelCheckpoint(monitor='val/g_losses', filename='checkpoint-{epoch:02d}-{val_g_losses:.2f}', save_top_k=10),
         #ModelCheckpoint(save_top_k=10, save_last=True)
     ]
     

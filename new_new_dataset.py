@@ -168,13 +168,14 @@ def pad_sequence(batch, max_len=200):
 
 
 class MyLibri(datasets.LIBRITTS):
-    def __init__(self, hp, download=False):
+    def __init__(self, hp, download=False, device='cpu'):
         self.hp = hp
         #super().__init__(hp.dataset.root, hp.dataset.subset, hp.dataset.save_as, download)
         self.root = os.path.expanduser(hp.dataset.root) # torchaudio breaks unless this
         super().__init__(self.root, hp.dataset.subset, hp.dataset.save_as, download=download)
         self.fe = dsp.FeatureEngineer(self.hp)
         self.spkr_emb_encoder = None
+        self.device = device
     
     def populate_speaker_idx(self):
 
@@ -209,20 +210,17 @@ class MyLibri(datasets.LIBRITTS):
         utterance_id) = super().__getitem__(n)
 
         file = os.path.join(self.root, self.hp.dataset.save_as, '{}', f'{speaker_id}', f'{chapter_id}', f'{utterance_id}.pt')
-        print(sample_rate)
 
         try:
-            mel = torch.load(file.format('mel'))
-            f0 = torch.load(file.format('f0'))
-            vuv = torch.load(file.format('vuv'))
-            spkr_emb = torch.load(file.format('spkr_emb'))
+            mel = torch.load(file.format('mel'), map_location='cpu')
+            f0 = torch.load(file.format('f0'), map_location='cpu')
+            vuv = torch.load(file.format('vuv'), map_location='cpu')
+            spkr_emb = torch.load(file.format('spkr_emb'), map_location='cpu')
         except FileNotFoundError:
-            print('not loaded')
             waveform = self.fe.resample(waveform, sample_rate)
             f0, vuv = self.fe.f0(waveform)
             # mel = self.fe.hifigan_mel_spectrogram(waveform)
-            mel = melspect(waveform)
-            print(mel.shape)
+            mel = melspect(waveform.to(self.device))
             if not self.spkr_emb_encoder:
                 self.spkr_emb_encoder = MelSpectrogramEncoder.from_hparams(
                     source="speechbrain/spkrec-ecapa-voxceleb-mel-spec", 
@@ -262,7 +260,7 @@ class MyLibri(datasets.LIBRITTS):
 def main(hp):
     # Create speaker2idx and phone2idx
     
-    dataset = MyLibri(hp, download=True)
+    dataset = MyLibri(hp, download=True, device=torch.device('cuda:3'))
     dataset.populate_speaker_idx()
 
     # The below was only done once -- moving from hifigan split json to my own
@@ -275,10 +273,11 @@ def main(hp):
         dataset,
         batch_size=8,
         collate_fn=collate_fn,
-        num_workers=10,
+        num_workers=60,
     )
-    for data in tqdm(dataloader):
-        mel, f0, vuv, speaker_id, spkr_emb = data
+    for data in tqdm(dataset):
+        pass
+        #mel, f0, vuv, speaker_id, spkr_emb = data
 
 
 if __name__ == '__main__':
