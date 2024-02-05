@@ -9,10 +9,31 @@ import dsp
 import hydra
 import lightning.pytorch as pl
 from speechbrain.lobes.models.FastSpeech2 import mel_spectogram
+#from speech_embeddings import melspect
 from speechbrain.pretrained import MelSpectrogramEncoder
 from pathlib import Path as P
 
 def melspect(waveform):
+    """use these exact values for pretrained spect"""
+    spectrogram, _ = mel_spectogram(
+        audio=waveform.squeeze(),
+        sample_rate=22050,
+        hop_length=256,
+        win_length=1024,
+        n_mels=80,
+        n_fft=1024,
+        f_min=0.0,
+        f_max=8000.0,
+        power=1,
+        normalized=False,
+        min_max_energy_norm=True,
+        norm="slaney",
+        mel_scale="slaney",
+        compression=True
+    )
+    return spectrogram
+
+def melspect_no(waveform):
     """use these exact values for pretrained spect"""
     spectrogram, _ = mel_spectogram(
         audio=waveform.squeeze(),
@@ -188,6 +209,7 @@ class MyLibri(datasets.LIBRITTS):
         utterance_id) = super().__getitem__(n)
 
         file = os.path.join(self.root, self.hp.dataset.save_as, '{}', f'{speaker_id}', f'{chapter_id}', f'{utterance_id}.pt')
+        print(sample_rate)
 
         try:
             mel = torch.load(file.format('mel'))
@@ -195,17 +217,19 @@ class MyLibri(datasets.LIBRITTS):
             vuv = torch.load(file.format('vuv'))
             spkr_emb = torch.load(file.format('spkr_emb'))
         except FileNotFoundError:
+            print('not loaded')
             waveform = self.fe.resample(waveform, sample_rate)
             f0, vuv = self.fe.f0(waveform)
             # mel = self.fe.hifigan_mel_spectrogram(waveform)
             mel = melspect(waveform)
+            print(mel.shape)
             if not self.spkr_emb_encoder:
                 self.spkr_emb_encoder = MelSpectrogramEncoder.from_hparams(
                     source="speechbrain/spkrec-ecapa-voxceleb-mel-spec", 
                     savedir="spk_emb_encoder_checkpoints", 
                     run_opts={"device": "cpu"})
             #mel16 = torch.nn.functional.interpolate(mel.unsqueeze(0), scale_factor=16000/22050)
-            spkr_emb = self.spkr_emb_encoder.encode_mel_spectrogram(mel)
+            spkr_emb = self.spkr_emb_encoder.encode_mel_spectrogram(torch.clone(mel))
             def save(obj, file):
                 os.makedirs(os.path.dirname(file), exist_ok=True) # need to create dir if doesn't exist
                 torch.save(obj, file)

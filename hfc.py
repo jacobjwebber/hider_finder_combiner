@@ -2,6 +2,7 @@ import hydra
 import os
 
 import lightning.pytorch as pl
+from lightning.pytorch.callbacks import ModelCheckpoint
 
 import torch
 import torch.nn as nn
@@ -147,7 +148,9 @@ class HFC(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         self.set_input(*batch)
-        self.new_speaker = torch.load(P(self.hp.dataset.root)/P(self.hp.dataset.save_as)/ P('spkr_emb/254/12312/254_12312_000004_000000.pt')).unsqueeze(0)
+        self.new_speaker = torch.load(
+            P(os.path.expanduser(self.hp.dataset.root)) / P(self.hp.dataset.save_as) / P('spkr_emb/254/12312/254_12312_000004_000000.pt')
+        ).unsqueeze(0).to(self.mel.device)
         self.forward()
         self.backward_G()
         self.backward_F()
@@ -158,7 +161,7 @@ class HFC(pl.LightningModule):
         if batch_idx < self.hp.training.log_n_audios and self.hp.training.wandb:
             if not self.hifigan:
                 self.hifigan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-libritts-22050Hz", savedir="hifigan_checkpoints", run_opts={"device": self.mel.device})
-            self.new_controlled = self.combiner((self.hidden, self.new_speaker, self.f0_idx, self.is_voiced))
+            self.new_controlled = self.combiner((self.hidden, 0, self.new_speaker, self.f0_idx, self.is_voiced))
             self.log_audio(batch_idx)
     
     def on_train_epoch_end(self):
@@ -172,18 +175,27 @@ class HFC(pl.LightningModule):
         new_controlled = self.new_controlled.transpose(1,2)
         audio = self.hifigan.decode_batch(controlled)
         audio_changed = self.hifigan.decode_batch(new_controlled)
+        audio_vc_copy = self.hifigan.decode_batch(self.mel)
 
 
-        self.logger.log_image('gt_spect', [self.mel.squeeze().cpu().numpy()], step=self.global_step)
-        self.logger.log_image('copy_spect', [controlled.squeeze().cpu().numpy()], step=self.global_step)
-        self.logger.log_image('modified_spect', [new_controlled.squeeze().cpu().numpy()], step=self.global_step)
+        #self.logger.log_image('gt_spect', [self.mel.squeeze().cpu().numpy()], step=self.global_step)
+        #self.logger.log_image('copy_spect', [controlled.squeeze().cpu().numpy()], step=self.global_step)
+        #self.logger.log_image('modified_spect', [new_controlled.squeeze().cpu().numpy()], step=self.global_step)
 
 
         #self.log('gt_audio': wandb.Audio(self.mel)) TODO
-        metrics = {'audios': [
-            wandb.Audio(audio.squeeze().cpu().numpy(), sample_rate=self.hp.sr, caption='unmodified'), 
-            wandb.Audio(audio_changed.squeeze().cpu().numpy(), sample_rate=self.hp.sr, caption='modified')
-        ]}
+        metrics = {
+            'audios': [
+                wandb.Audio(audio.squeeze().cpu().numpy(), sample_rate=self.hp.sr, caption='unmodified'), 
+                wandb.Audio(audio_changed.squeeze().cpu().numpy(), sample_rate=self.hp.sr, caption='modified'),
+                wandb.Audio(audio_vc_copy.squeeze().cpu().numpy(), sample_rate=self.hp.sr, caption='vc_copy'),
+            ],
+            'spectrograms': [
+                wandb.Image(self.mel.squeeze().cpu().numpy(), caption='unmodified'),
+                wandb.Image(controlled.squeeze().cpu().numpy(), caption='copy'),
+                wandb.Image(new_controlled.squeeze().cpu().numpy(), caption='modified'),
+                ]
+        }
         self.logger.log_metrics(metrics, step=self.global_step)
         #self.logger.log_audio('copy_audio', audio.squeeze().cpu().numpy(), sample_rate=self.hp.sr)
         #self.logger.log_audio('modified_audio', audio_changed.squeeze().cpu().numpy(), sample_rate=self.hp.sr)
@@ -223,15 +235,26 @@ def train(config):
     n_speakers = dm.n_speakers
     hfc = HFC(config, n_speakers)
     print('Done')
+    if torch.cuda.device_count() > 1:
+        strategy = 'ddp_find_unused_parameters_true'
+    else:
+        strategy = 'auto'
 
     if config.training.wandb:
         logger = pl.loggers.WandbLogger(project="hfc_main")
     else:
         logger = None
+    
+    checkpointers = [
+        ModelCheckpoint(monitor='val_g_losses', filename='checkpoint-{epoch:02d}-{val_g_losses:.2f}', save_top_k=10),
+        #ModelCheckpoint(save_top_k=10, save_last=True)
+    ]
+    
     trainer = pl.Trainer(logger=logger,
                          check_val_every_n_epoch=config.training.val_check_interval,
                          max_epochs=config.training.epochs,
-                         strategy='ddp_find_unused_parameters_true',
+                         strategy=strategy,
+                         callbacks=checkpointers,
                         ) 
 
     # finds learning rate automatically
