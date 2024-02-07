@@ -24,6 +24,7 @@ import plottage
 
 os.environ['TRANSFORMERS_CACHE'] = './cache/transformers'
 os.environ['WANDB_CACHE_DIR'] = './cache/wand'
+os.environ['WANDB_DATA_DIR'] = './cache/wandb_data'
 
 class HFC(pl.LightningModule):
     """ An implementation of the Hider Finder Combiner architecture for
@@ -136,10 +137,6 @@ class HFC(pl.LightningModule):
         self.clip_gradients(g_opt, gradient_clip_val=self.hp.training.clip, gradient_clip_algorithm="norm")
         g_opt.step()
 
-        if self.global_step % self.hp.training.scheduler_step == 0:
-            self.g_schedj.step(self.combiner_loss)
-            self.f_schedj.step(self.finder_loss)
-
 
     def training_step(self, batch):
         self.set_input(*batch)
@@ -157,7 +154,7 @@ class HFC(pl.LightningModule):
         ).unsqueeze(0).to(self.mel.device)
         self.forward()
         self.backward_G()
-        self.backward_F()
+        self.backward_F(adversarial=True)
         self.log('val/leakage_loss', self.leakage_loss, prog_bar=True)
         self.log('val/combiner_loss', self.combiner_loss, prog_bar=True)
         self.log('val/finder_loss', self.finder_loss, prog_bar=True)
@@ -250,7 +247,7 @@ def train(config):
         logger = None
     
     checkpointers = [
-        ModelCheckpoint(monitor='val/g_losses', filename='checkpoint-{epoch:02d}-{val_g_losses:.2f}', save_top_k=10),
+        ModelCheckpoint(monitor='val/g_losses', filename='checkpoint-{epoch:02d}-{val/g_losses:.2f}', save_top_k=10),
         #ModelCheckpoint(save_top_k=10, save_last=True)
     ]
     

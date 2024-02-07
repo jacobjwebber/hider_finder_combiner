@@ -15,6 +15,7 @@ class Combiner(nn.Module):
         self.use_f0 = hp.use_f0
 
         f0_dim = hp.control_variables.f0_bins
+        self.f0_dims = f0_dim
         speaker_emb_dim = hp.control_variables.speaker_embedding_dim
 
         self.f0_embedding = nn.Embedding(f0_dim, f0_dim)
@@ -61,7 +62,8 @@ class Combiner(nn.Module):
 
         spectral = self.spectral_PTCB(spectral)
         if self.use_f0:
-            f0 = self.f0_embedding(f0)
+            #f0 = self.f0_embedding(f0)
+            f0 = nn.functional.one_hot(f0, self.f0_dims).float()
             f0 = self.f0_PTCB(f0)
             unvoiced_f0 = is_voiced * f0
             f0 = self.merge_voicing(torch.cat((unvoiced_f0, f0), 2))
