@@ -20,12 +20,12 @@ class CombinerAutoEncoder(pl.LightningModule):
     
     def training_step(self, batch):
         mel, f0, vuv, speaker_id, spkr_emb = batch
-        mel = mel.float().transpose(1,2)
+        #mel = mel.float()
         f0_idx = dsp.bin_tensor(f0, self.f0_bins, self.hp.control_variables.f0_min, self.hp.control_variables.f0_max)
-        is_voiced = vuv.float().unsqueeze(2)
+        is_voiced = vuv.float()
         out = self.combiner((mel, speaker_id, spkr_emb, f0_idx, is_voiced))
         loss = F.mse_loss(out, mel)
-        self.log('loss', loss)
+        self.log('loss', loss, prog_bar=True)
         return loss
 
 
@@ -95,10 +95,8 @@ class Combiner(nn.Module):
         seq_length = spectral.shape[1]
         spectral_width = spectral.shape[2]
 
-        #print(f'seq_length = {seq_length}')
 
         # Using f0 onehot instead of embedding. TODO use embedding instead
-        #print(f0.max())
         #speaker_id = self.speaker_embedding(speaker_id)
         speaker_id = spkr_emb.squeeze(1)
         speaker_id = speaker_id.repeat(1, seq_length, 1)
@@ -112,7 +110,7 @@ class Combiner(nn.Module):
         spectral = self.spectral_PTCB(spectral)
         if self.use_f0:
             #f0 = self.f0_embedding(f0)
-            f0 = nn.functional.one_hot(f0, self.f0_dims).float()
+            f0 = nn.functional.one_hot(f0, self.f0_dims).float().squeeze()
             f0 = self.f0_PTCB(f0)
             unvoiced_f0 = is_voiced * f0
             f0 = self.merge_voicing(torch.cat((unvoiced_f0, f0), 2))
@@ -163,7 +161,6 @@ class ParallelTransposedConvolutionalBlock(nn.Module):
             self.parallel_components.append(component)
 
     def forward(self, x):
-        #print(x.shape)
         batch_size, seq_length, width = x.shape
         x = x.reshape(batch_size * seq_length, 1, -1)
         xs = [c(x) for c in self.parallel_components]
@@ -198,7 +195,7 @@ def train(config):
 
     # finds learning rate automatically
     # sets hparams.lr or hparams.learning_rate to that learning rate
-    #tuner.lr_find(finder, datamodule=dm)
+    tuner.lr_find(finder, datamodule=dm)
     trainer.fit(finder, datamodule=dm,)
 
 

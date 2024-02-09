@@ -35,7 +35,7 @@ use_f0: True
 loss_mode: 'mse'
 
 combiner:
-  lr: 0.001
+  lr: 1.000758
 
 training_finder:
   batch_size: 32
@@ -50,7 +50,7 @@ training:
   clip: 0.5
   #lr: 0.007
   #lr: 0.10964781961431852
-  lr_g: 0.001
+  lr_g: 0.000758
   lr_f: 0.001
   val_check_interval: 10 # in epochs
   metric: 'combiner_loss'

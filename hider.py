@@ -26,7 +26,6 @@ class Hider(nn.Module):
         self.dropout = nn.Dropout(self.dropout)
         # dropout for the output layer to for denoising autoencoder
         self.denoising = nn.Dropout(self.denoising)
-        self.residual = nn.Linear(self.input_width, self.conv_out_width)
         self.fc1 = nn.Linear(self.conv_out_width, self.conv_out_width)
         self.conv = nn.Conv2d(1, 1, kernel_size, dilation=dilation, stride=stride, padding=padding) 
         self.rnn = nn.GRU(self.conv_out_width, self.hidden_size, self.n_layers, dropout=rnn_mult * hp.hider.drop, batch_first=True)
@@ -39,9 +38,9 @@ class Hider(nn.Module):
         # Arrange shape so that middle dimension is 1 -- number of conv channels
         x = spectrograms.transpose(1,2).unsqueeze(1)
         # Pass through x as only modified by linear layer -- possibly bypassing conv
-        x = F.relu(self.conv(x)) + F.relu(self.residual(x))
+        x = F.relu(self.conv(x)) 
         x = self.dropout(F.relu(x))
-        x = x.view((batch_size, length, self.conv_out_width))
+        x = x.view((batch_size, length, self.conv_out_width)) # TODO replace with squeeze?
         x = self.fc1(x)
         x = self.dropout(F.relu(x))
         x, hidden = self.rnn(x)
