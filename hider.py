@@ -28,7 +28,7 @@ class Hider(nn.Module):
         self.denoising = nn.Dropout(self.denoising)
         self.residual = nn.Linear(self.input_width, self.conv_out_width)
         self.fc1 = nn.Linear(self.conv_out_width, self.conv_out_width)
-        self.conv = nn.Conv2d(1, 1, kernel_size, dilation=dilation, stride=stride, padding=padding) # TODO convert to 2d
+        self.conv = nn.Conv2d(1, 1, kernel_size, dilation=dilation, stride=stride, padding=padding) 
         self.rnn = nn.GRU(self.conv_out_width, self.hidden_size, self.n_layers, dropout=rnn_mult * hp.hider.drop, batch_first=True)
         self.lin = nn.Linear(self.hidden_size, self.output_width)
 

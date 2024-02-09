@@ -1,6 +1,55 @@
 import torch
 import torch.nn as nn
+import torch.optim as optim
 import torch.nn.functional as F
+import hydra
+import lightning.pytorch as pl
+from lightning.pytorch.tuner import Tuner
+
+import dsp
+from new_new_dataset import HFCDataModule
+
+class CombinerAutoEncoder(pl.LightningModule):
+    def __init__(self, hp, n_speakers):
+        super(CombinerAutoEncoder, self).__init__()
+        self.lr = hp.combiner.lr
+        self.combiner = Combiner(hp, n_speakers)
+        self.hp = hp
+        self.n_speakers = n_speakers
+        self.f0_bins = hp.control_variables.f0_bins
+    
+    def training_step(self, batch):
+        mel, f0, vuv, speaker_id, spkr_emb = batch
+        mel = mel.float().transpose(1,2)
+        f0_idx = dsp.bin_tensor(f0, self.f0_bins, self.hp.control_variables.f0_min, self.hp.control_variables.f0_max)
+        is_voiced = vuv.float().unsqueeze(2)
+        out = self.combiner((mel, speaker_id, spkr_emb, f0_idx, is_voiced))
+        loss = F.mse_loss(out, mel)
+        self.log('loss', loss)
+        return loss
+
+
+    def configure_optimizers(self):
+        optimizer = optim.Adam(self.parameters(), lr=self.lr)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, verbose=True)
+        return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'monitor': 'loss'}}
+
+
+class ConvCombiner(nn.Module):
+    def __init__(self, hp, n_speakers):
+        super(Combiner, self).__init__()
+        pass
+
+    def forward(self, x):
+        pass
+
+class TransformerCombiner(nn.Module):
+    def __init__(self, hp, n_speakers):
+        super(TransformerCombiner, self).__init__()
+        pass
+
+    def forward(self, x):
+        pass
 
 class Combiner(nn.Module):
     def __init__(self, hp, n_speakers):
@@ -116,10 +165,42 @@ class ParallelTransposedConvolutionalBlock(nn.Module):
     def forward(self, x):
         #print(x.shape)
         batch_size, seq_length, width = x.shape
-        x = x.view(batch_size * seq_length, 1, -1)
+        x = x.reshape(batch_size * seq_length, 1, -1)
         xs = [c(x) for c in self.parallel_components]
         output = sum(xs)
         output += self.residual(x)
         output = output.view(batch_size, seq_length, -1)
         return output
     
+
+@hydra.main(version_base=None, config_path='config', config_name="config")
+def train(config):
+    # Trains a finder on ground truth
+    dm = HFCDataModule(config)
+    n_speakers = dm.n_speakers
+
+    finder = CombinerAutoEncoder(config, n_speakers)
+
+    if torch.cuda.device_count() > 1:
+        strategy = 'ddp_find_unused_parameters_true'
+    else:
+        strategy = 'auto'
+
+    if config.training.wandb:
+        logger = pl.loggers.wandb.WandbLogger(project="hfc_combiner")
+    else:
+        logger = None
+    trainer = pl.Trainer(logger=logger, gradient_clip_val=0.5, detect_anomaly=True,
+                         strategy=strategy,
+    )
+    # Create a Tuner
+    tuner = Tuner(trainer)
+
+    # finds learning rate automatically
+    # sets hparams.lr or hparams.learning_rate to that learning rate
+    #tuner.lr_find(finder, datamodule=dm)
+    trainer.fit(finder, datamodule=dm,)
+
+
+if __name__ == '__main__':
+    train()

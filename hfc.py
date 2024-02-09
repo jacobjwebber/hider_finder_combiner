@@ -26,6 +26,43 @@ os.environ['TRANSFORMERS_CACHE'] = './cache/transformers'
 os.environ['WANDB_CACHE_DIR'] = './cache/wand'
 os.environ['WANDB_DATA_DIR'] = './cache/wandb_data'
 
+class HFCLosses:
+    def __init__(self, prior=None, mode='mse'):
+        self.prior = prior
+        self.mode = mode
+
+        if self.mode == 'mse':
+            self.leakage_loss = self.leakage_loss_mse
+            self.finder_loss = self.finder_loss_mse
+        elif self.mode == 'ce':
+            self.leakage_loss = self.leakage_loss_ce
+            self.finder_loss = self.finder_loss_ce
+        else:
+            raise NotImplementedError('HFCLosses: mode must be \'mse\' or \'ce\'')
+
+    def leakage_loss_mse(self, pred):
+        n_classes = pred.shape[1]
+        normalise = n_classes ** 2 / (n_classes - 1) # Recalculate every time its cheap
+        if self.prior:
+            F.mse_loss(pred, self.prior) * normalise
+        else:
+            return torch.var(pred, 1).mean() * normalise
+    
+    def finder_loss_mse(self, pred, gt):
+        pred_prob = F.softmax(pred, dim=1)
+        F.mse_loss(pred_prob, F.one_hot(gt, self.n_classes))
+        
+    def leakage_loss_ce(self, pred):
+        pred_prob = F.softmax(pred, dim=1)
+        if not self.prior:
+            self.prior = F.softmax(torch.ones_like(pred), dim=1)
+        
+        return torch.mean(-torch.sum(self.prior * torch.log(pred), 1))
+    
+    def finder_loss_ce(self, pred, gt):
+        F.cross_entropy(pred, gt)
+
+
 class HFC(pl.LightningModule):
     """ An implementation of the Hider Finder Combiner architecture for
     arbitrary control of speech signals """
@@ -47,7 +84,7 @@ class HFC(pl.LightningModule):
         # The 'combiner loss' criterion
         self.g_criterion = nn.MSELoss()
         # Ignore (for now) index associated with unvoiced regions
-        self.f_criterion = nn.CrossEntropyLoss()
+        self.hfc_losses = HFCLosses(mode=hp.loss_mode)
         print('n_speakers = ', n_speakers)
 
     def configure_optimizers(self):
@@ -69,8 +106,6 @@ class HFC(pl.LightningModule):
         is_voiced = is_voiced.squeeze(-1)
         batch_size, seq_len = f0.shape
 
-        # Two versions --- one matrix onehot and one array of indices
-        #self.cv_index = dsp.onehot_index(control_variable, self.hp.cv_bins, self.hp.cv_range)
         self.speaker_id = speaker_id
 
         self.f0_idx = dsp.bin_tensor(f0, self.f0_bins, self.hp.control_variables.f0_min, self.hp.control_variables.f0_max)
@@ -88,9 +123,9 @@ class HFC(pl.LightningModule):
         # Attempt to predict the control variable from the hidden repr
         pred_f0, pred_speaker_id = self.finder(self.hidden.detach())
 
-        self.finder_loss_id = self.f_criterion(pred_speaker_id, self.speaker_id)
+        self.finder_loss_id = self.hfc_losses.finder_loss(pred_speaker_id, self.speaker_id)
         # pred_f0 = (Batch x seq_len x f0_bins) -- need to put seq_len at the end for loss
-        self.finder_loss_f0 = self.f_criterion(pred_f0.transpose(1,2), self.f0_idx)
+        self.finder_loss_f0 = self.hfc_losses.finder_loss(pred_f0.transpose(1,2), self.f0_idx)
         self.finder_loss = 0. * self.finder_loss_f0 + self.finder_loss_id
 
     def backward_G(self, adversarial=False):
@@ -101,8 +136,7 @@ class HFC(pl.LightningModule):
             pred_f0, pred_speaker_id = self.finder(self.hidden)
             # Softmax converts to probabilities, which we can use for leakage loss
             #print(pred_speaker_id.shape)
-            self.pred_speaker_id = F.softmax(pred_speaker_id, dim=1)
-            self.leakage_loss_id = torch.var(self.pred_speaker_id, 1).mean() * self.n_speakers
+            self.hfc_losses.leakage_loss(pred_speaker_id)
         else:
             self.leakage_loss_id = 0.
 

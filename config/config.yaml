@@ -32,6 +32,10 @@ hydra:
 
 
 use_f0: True
+loss_mode: 'mse'
+
+combiner:
+  lr: 0.001
 
 training_finder:
   batch_size: 32
