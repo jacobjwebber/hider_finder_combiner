@@ -25,6 +25,7 @@ import plottage
 os.environ['TRANSFORMERS_CACHE'] = './cache/transformers'
 os.environ['WANDB_CACHE_DIR'] = './cache/wand'
 os.environ['WANDB_DATA_DIR'] = './cache/wandb_data'
+os.environ['MPLCONFIGDIR'] = './cache/matplotlib'
 
 class HFCLosses:
     def __init__(self, prior=None, mode='mse'):
@@ -41,16 +42,17 @@ class HFCLosses:
             raise NotImplementedError('HFCLosses: mode must be \'mse\' or \'ce\'')
 
     def leakage_loss_mse(self, pred):
-        n_classes = pred.shape[1]
+        n_classes = pred.shape[-1]
         normalise = n_classes ** 2 / (n_classes - 1) # Recalculate every time its cheap
         if self.prior:
             F.mse_loss(pred, self.prior) * normalise
         else:
-            return torch.var(pred, 1).mean() * normalise
+            return torch.var(pred, -2).mean() * normalise
     
     def finder_loss_mse(self, pred, gt):
         pred_prob = F.softmax(pred, dim=1)
-        F.mse_loss(pred_prob, F.one_hot(gt, self.n_classes))
+        n_classes = pred.shape[-1]
+        return F.mse_loss(pred_prob, F.one_hot(gt, n_classes).float()) * n_classes
         
     def leakage_loss_ce(self, pred):
         pred_prob = F.softmax(pred, dim=1)
@@ -60,7 +62,7 @@ class HFCLosses:
         return torch.mean(-torch.sum(self.prior * torch.log(pred), 1))
     
     def finder_loss_ce(self, pred, gt):
-        F.cross_entropy(pred, gt)
+        return F.cross_entropy(pred, gt)
 
 
 class HFC(pl.LightningModule):
@@ -116,7 +118,7 @@ class HFC(pl.LightningModule):
 
     def forward(self):
         """Uses hider network to generate hidden representation"""
-        self.hidden = self.hider(self.mel)
+        self.hidden = self.hider(self.mel.float())
         self.controlled = self.combiner((self.hidden, self.speaker_id, self.spkr_emb, self.f0_idx, self.is_voiced))
 
     def backward_F(self):
@@ -125,7 +127,7 @@ class HFC(pl.LightningModule):
 
         self.finder_loss_id = self.hfc_losses.finder_loss(pred_speaker_id, self.speaker_id)
         # pred_f0 = (Batch x seq_len x f0_bins) -- need to put seq_len at the end for loss
-        self.finder_loss_f0 = self.hfc_losses.finder_loss(pred_f0.transpose(1,2), self.f0_idx)
+        self.finder_loss_f0 = self.hfc_losses.finder_loss(pred_f0, self.f0_idx)
         self.finder_loss = 0. * self.finder_loss_f0 + self.finder_loss_id
 
     def backward_G(self, adversarial=False):
@@ -135,14 +137,12 @@ class HFC(pl.LightningModule):
             # newly updated finder can generate a better training signal
             pred_f0, pred_speaker_id = self.finder(self.hidden)
             # Softmax converts to probabilities, which we can use for leakage loss
-            #print(pred_speaker_id.shape)
-            self.hfc_losses.leakage_loss(pred_speaker_id)
+            self.leakage_loss_id = self.hfc_losses.leakage_loss(pred_speaker_id)
         else:
             self.leakage_loss_id = 0.
 
         # Use output from forward earlier to do mse between resynthed, controlled output and
         # ground truth input
-        #print(self.controlled.shape, self.mel.shape)
         self.combiner_loss = self.g_criterion(self.controlled, self.mel.transpose(1,2))
 
         # Use mean to reduce along all timesteps
@@ -187,8 +187,8 @@ class HFC(pl.LightningModule):
             P(os.path.expanduser(self.hp.dataset.root)) / P(self.hp.dataset.save_as) / P('spkr_emb/254/12312/254_12312_000004_000000.pt')
         ).unsqueeze(0).to(self.mel.device)
         self.forward()
-        self.backward_G()
-        self.backward_F(adversarial=True)
+        self.backward_G(adversarial=True)
+        self.backward_F()
         self.log('val/leakage_loss', self.leakage_loss, prog_bar=True)
         self.log('val/combiner_loss', self.combiner_loss, prog_bar=True)
         self.log('val/finder_loss', self.finder_loss, prog_bar=True)
