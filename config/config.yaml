@@ -78,4 +78,4 @@ fmax: 8000
 
 model:
   hidden_size: 80
-  beta: 5.
+  beta: 1.
