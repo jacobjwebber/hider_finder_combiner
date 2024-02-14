@@ -1,0 +1,6 @@
+# combiner
+#num_mels, n_spk, zdim, hdim, sdim, src_conditioning=src_conditioning
+name: stargan
+zdim: 16
+hdim: 64 
+sdim: 16

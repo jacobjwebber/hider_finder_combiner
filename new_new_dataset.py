@@ -106,7 +106,7 @@ class HFCDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=True,
             collate_fn=collate_fn,
-            num_workers=8,
+            num_workers=16,
         )
     
     def val_dataloader(self):
@@ -115,12 +115,12 @@ class HFCDataModule(pl.LightningDataModule):
             batch_size=1,
             shuffle=False,
             collate_fn=collate_fn_val,
-            num_workers=8,
+            num_workers=16,
         )
     
     
 def collate_fn_val(batch):
-    return collate_fn(batch, max_len=-1)
+    return collate_fn(batch, max_len=10000)
 
 def collate_fn(batch, max_len=200):
     # A data tuple has the form:
@@ -137,16 +137,28 @@ def collate_fn(batch, max_len=200):
         spkr_embs += [sample['spkr_emb']]
 
     # Group the list of tensors into a batched tensor
-    mels = pad_sequence(mels, max_len=max_len)
-    f0s = pad_sequence(f0s, max_len=max_len)
-    vuvs = pad_sequence(vuvs, max_len=max_len)
+    start_indices, end_indices = crop_indices(mels, max_len=max_len)
+    new_mels = []
+    new_f0s = []
+    new_vuvs = [] 
+    for mel, f0, vuv, start_index, end_index in zip(mels, f0s, vuvs, start_indices, end_indices):
+        assert (end_index - start_index) % 4 == 0, f'{end_index - start_index}'
+        new_mels.append(mel[:,start_index:end_index].transpose(0,1))
+        new_f0s.append(f0[:,start_index:end_index].transpose(0,1))
+        new_vuvs.append(vuv[:,start_index:end_index].transpose(0,1))
+    
+    mels = torch.nn.utils.rnn.pad_sequence(new_mels, batch_first=True)
+    f0s = torch.nn.utils.rnn.pad_sequence(new_f0s, batch_first=True)
+    vuvs = torch.nn.utils.rnn.pad_sequence(new_vuvs, batch_first=True)
+
     ids = torch.LongTensor(ids)
     spkr_embs = torch.stack(spkr_embs)
     return mels, f0s, vuvs, ids, spkr_embs
 
-def pad_sequence(batch, max_len=200):
+def crop_indices(batch, max_len=200):
     batch = [item.t() for item in batch]
-    new_batch = []
+    start_indices = []
+    end_indices = []
     for item in batch:
         seq_len = item.shape[0]
         last_poss_index = seq_len - max_len
@@ -157,13 +169,11 @@ def pad_sequence(batch, max_len=200):
             start_index = 0
         # Prevent out range error by using the min function
         end_index = min([start_index + max_len, seq_len])
-        cropped_item = item[start_index:end_index]
-        new_batch.append(cropped_item)
+        end_index = end_index - ((end_index - start_index) % 4) # Pad to 4
+        start_indices.append(start_index)
+        end_indices.append(end_index)
 
-    batch = torch.nn.utils.rnn.pad_sequence(batch, batch_first=True, padding_value=0.)
-    if max_len > 0:
-        batch = batch[:,:max_len]
-    return batch
+    return start_indices, end_indices
 
 
 
@@ -176,6 +186,7 @@ class MyLibri(datasets.LIBRITTS):
         self.fe = dsp.FeatureEngineer(self.hp)
         self.spkr_emb_encoder = None
         self.device = device
+    
     
     def populate_speaker_idx(self):
 
@@ -238,6 +249,9 @@ class MyLibri(datasets.LIBRITTS):
 
         f0, vuv, mel = self.fe.crop_to_shortest(f0, vuv, mel)
         speaker_id = self.speaker2idx[str(speaker_id)]
+        # TODO crude norm
+
+        mel = dsp.normalise_mel(mel)
 
         return {
             'waveform': waveform,

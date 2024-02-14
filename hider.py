@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
+from common_nn import LinearNorm
 
 class Hider(nn.Module):
     def __init__(self, hp):
@@ -26,10 +27,10 @@ class Hider(nn.Module):
         self.dropout = nn.Dropout(self.dropout)
         # dropout for the output layer to for denoising autoencoder
         self.denoising = nn.Dropout(self.denoising)
-        self.fc1 = nn.Linear(self.conv_out_width, self.conv_out_width)
+        self.fc1 = LinearNorm(self.conv_out_width, self.conv_out_width)
         self.conv = nn.Conv2d(1, 1, kernel_size, dilation=dilation, stride=stride, padding=padding) 
         self.rnn = nn.GRU(self.conv_out_width, self.hidden_size, self.n_layers, dropout=rnn_mult * hp.hider.drop, batch_first=True)
-        self.lin = nn.Linear(self.hidden_size, self.output_width)
+        self.lin = LinearNorm(self.hidden_size, self.output_width)
 
     def forward(self, spectrograms):
         shape = spectrograms.shape

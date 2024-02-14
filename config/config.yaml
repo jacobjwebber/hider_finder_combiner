@@ -2,7 +2,7 @@ defaults:
   - dataset: my_libri
   - hider: rnn
   - finder: rnn
-  - combiner: rnn
+  - combiner: stargan
   #- override hydra/launcher: submitit_local
   - override hydra/sweeper: optuna
 

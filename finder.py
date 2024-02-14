@@ -163,7 +163,7 @@ class RNNFinder(nn.Module):
         out, hidden = self.rnn(spectrograms)
         f0_prediction = self.f0_lin(out)
         # use mean to reduce time dimensionality
-        speaker_prediction = self.speaker_id_lin(torch.mean(out, dim=1))
+        speaker_prediction = self.speaker_id_lin(torch.mean(out, dim=1, keepdim=True))
         return f0_prediction, speaker_prediction
 
 

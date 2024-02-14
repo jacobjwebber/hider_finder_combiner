@@ -12,6 +12,7 @@ import wandb
 from speechbrain.pretrained import HIFIGAN
 import sysrsync
 from pathlib import Path as P
+from matplotlib import pyplot as plt
 
 
 # Local imports
@@ -20,7 +21,6 @@ from hider import Hider
 from finder import Finder
 from combiner import Combiner
 from new_new_dataset import HFCDataModule
-import plottage
 
 os.environ['TRANSFORMERS_CACHE'] = './cache/transformers'
 os.environ['WANDB_CACHE_DIR'] = './cache/wand'
@@ -44,22 +44,26 @@ class HFCLosses:
     def leakage_loss_mse(self, pred):
         n_classes = pred.shape[-1]
         normalise = n_classes ** 2 / (n_classes - 1) # Recalculate every time its cheap
+        pred_prob = F.softmax(pred, dim=-1)
         if self.prior:
-            F.mse_loss(pred, self.prior) * normalise
+            F.mse_loss(pred_prob, self.prior) * normalise
         else:
-            return torch.var(pred, -2).mean() * normalise
+            return torch.var(pred_prob) * normalise
     
     def finder_loss_mse(self, pred, gt):
-        pred_prob = F.softmax(pred, dim=1)
-        n_classes = pred.shape[-1]
-        return F.mse_loss(pred_prob, F.one_hot(gt, n_classes).float()) * n_classes
+        B, T, n_classes = pred.shape
+        pred_prob = F.softmax(pred, dim=-1)
+        if len(gt.shape) < 2:
+            gt = gt.unsqueeze(-1) # Neet to insert fake time dim 
+        onehot = F.one_hot(gt, n_classes).float()
+        return F.mse_loss(pred_prob, onehot) * n_classes
         
     def leakage_loss_ce(self, pred):
         pred_prob = F.softmax(pred, dim=1)
         if not self.prior:
             self.prior = F.softmax(torch.ones_like(pred), dim=1)
         
-        return torch.mean(-torch.sum(self.prior * torch.log(pred), 1))
+        return torch.mean(-torch.sum(self.prior * torch.log(pred_prob), 1))
     
     def finder_loss_ce(self, pred, gt):
         return F.cross_entropy(pred, gt)
@@ -109,6 +113,7 @@ class HFC(pl.LightningModule):
         batch_size, seq_len = f0.shape
 
         self.speaker_id = speaker_id
+        self.f0 = f0
 
         self.f0_idx = dsp.bin_tensor(f0, self.f0_bins, self.hp.control_variables.f0_min, self.hp.control_variables.f0_max)
         self.is_voiced = is_voiced.float().unsqueeze(2)
@@ -118,8 +123,8 @@ class HFC(pl.LightningModule):
 
     def forward(self):
         """Uses hider network to generate hidden representation"""
-        self.hidden = self.hider(self.mel.float())
-        self.controlled = self.combiner((self.hidden, self.speaker_id, self.spkr_emb, self.f0_idx, self.is_voiced))
+        self.hidden = self.hider(self.mel)
+        self.controlled = self.combiner((self.hidden, self.f0, self.is_voiced, self.speaker_id, self.spkr_emb))
 
     def backward_F(self):
         # Attempt to predict the control variable from the hidden repr
@@ -130,8 +135,9 @@ class HFC(pl.LightningModule):
         self.finder_loss_f0 = self.hfc_losses.finder_loss(pred_f0, self.f0_idx)
         self.finder_loss = 0. * self.finder_loss_f0 + self.finder_loss_id
 
-    def backward_G(self, adversarial=False):
+    def backward_G(self, adversarial=True):
         # G is hider and combiner together
+        adversarial = True
 
         if adversarial:
             # newly updated finder can generate a better training signal
@@ -196,7 +202,7 @@ class HFC(pl.LightningModule):
         if batch_idx < self.hp.training.log_n_audios and self.hp.training.wandb:
             if not self.hifigan:
                 self.hifigan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-libritts-22050Hz", savedir="hifigan_checkpoints", run_opts={"device": self.mel.device})
-            self.new_controlled = self.combiner((self.hidden, 0, self.new_speaker, self.f0_idx, self.is_voiced))
+            self.new_controlled = self.combiner((self.hidden, self.f0, self.is_voiced, 0, self.new_speaker))
             self.log_audio(batch_idx)
     
     def on_train_epoch_end(self):
@@ -208,9 +214,9 @@ class HFC(pl.LightningModule):
         # Depends on wandb -- TODO make an option for local or whatever
         controlled = self.controlled.transpose(1,2)
         new_controlled = self.new_controlled.transpose(1,2)
-        audio = self.hifigan.decode_batch(controlled)
-        audio_changed = self.hifigan.decode_batch(new_controlled)
-        audio_vc_copy = self.hifigan.decode_batch(self.mel)
+        audio = self.hifigan.decode_batch(dsp.denormalise_mel(controlled))
+        audio_changed = self.hifigan.decode_batch(dsp.denormalise_mel(new_controlled))
+        audio_vc_copy = self.hifigan.decode_batch(dsp.denormalise_mel(self.mel))
 
 
         #self.logger.log_image('gt_spect', [self.mel.squeeze().cpu().numpy()], step=self.global_step)
@@ -218,36 +224,41 @@ class HFC(pl.LightningModule):
         #self.logger.log_image('modified_spect', [new_controlled.squeeze().cpu().numpy()], step=self.global_step)
 
 
-        #self.log('gt_audio': wandb.Audio(self.mel)) TODO
         metrics = {
             'audios': [
-                wandb.Audio(audio.squeeze().cpu().numpy(), sample_rate=self.hp.sr, caption='unmodified'), 
+                wandb.Audio(audio.squeeze().cpu().numpy(), sample_rate=self.hp.sr, caption='hfc_copy'), 
                 wandb.Audio(audio_changed.squeeze().cpu().numpy(), sample_rate=self.hp.sr, caption='modified'),
                 wandb.Audio(audio_vc_copy.squeeze().cpu().numpy(), sample_rate=self.hp.sr, caption='vc_copy'),
             ],
-            'spectrograms': [
-                wandb.Image(self.mel.squeeze().cpu().numpy(), caption='unmodified'),
-                wandb.Image(controlled.squeeze().cpu().numpy(), caption='copy'),
-                wandb.Image(new_controlled.squeeze().cpu().numpy(), caption='modified'),
-                ]
+            'spectrograms2': [
+                wandb.Image(self.plot_mels(
+                    [self.mel, controlled, new_controlled, ],
+                    [self.f0_idx, self.f0_idx, self.f0_idx, ],
+                    ['gt', 'hfc_copy', 'modified', ]
+                    ))
+            ],
+            #'spectrograms': [
+            #    wandb.Image(self.mel.squeeze().cpu().numpy(), caption='gt'),
+            #    wandb.Image(controlled.squeeze().cpu().numpy(), caption='copy'),
+            #    wandb.Image(new_controlled.squeeze().cpu().numpy(), caption='modified'),
+            #    ]
         }
-        self.logger.log_metrics(metrics, step=self.global_step)
+        self.logger.log_metrics(metrics)
         #self.logger.log_audio('copy_audio', audio.squeeze().cpu().numpy(), sample_rate=self.hp.sr)
         #self.logger.log_audio('modified_audio', audio_changed.squeeze().cpu().numpy(), sample_rate=self.hp.sr)
-        '''
-        html_file_name = f'outputs/audio_{int(self.speaker_id)}_{n}.html'
-        html_file_name_changed = f'outputs/audio_changed_{int(self.speaker_id)}_{n}.html'
-        plottage.save_audio_with_bokeh_plot_to_html(audio, self.hp.sr, html_file_name)
-        plottage.save_audio_with_bokeh_plot_to_html(audio_changed, self.hp.sr, html_file_name)
-        html = wandb.Html(html_file_name)
-        html_c = wandb.Html(html_file_name_changed)
 
-        my_table = wandb.Table(columns=["audio_unchanged"], data=[[html], [html]])
-        my_table = wandb.Table(columns=["audio_changed"], data=[[html_c], [html_c]])
+    def plot_mels(self, mels, f0s, titles):
+        figure, axes = plt.subplots(len(mels), 1)
+        for ax, mel, f0, title in zip(axes, mels, f0s, titles):
+            mel = mel.squeeze().cpu()
+            ax.imshow(mel, aspect='auto', origin='lower', extent=[0, mel.shape[1], 0, self.hp.control_variables.f0_bins])
+            ax.plot(f0.squeeze().cpu(), color='firebrick')
+            ax.set_title(title)
+            ax.set_ylabel('f0 index')
+        axes[-1].set_xlabel('time')
+        figure.savefig('test_mels.png')
+        return  figure
 
-        self.logger.log_table('val/audio', columns=['audio_unchanged'], data=[[html], [html]])
-        self.logger.log_table('val/audio_changed', columns=['audio_changed'], data=[[html_c], [html_c]])
-        '''
 
 
 
@@ -288,6 +299,7 @@ def train(config):
     trainer = pl.Trainer(logger=logger,
                          check_val_every_n_epoch=config.training.val_check_interval,
                          max_epochs=config.training.epochs,
+                         detect_anomaly=True,
                          strategy=strategy,
                          callbacks=checkpointers,
                         ) 

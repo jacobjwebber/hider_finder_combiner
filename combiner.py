@@ -5,27 +5,55 @@ import torch.nn.functional as F
 import hydra
 import lightning.pytorch as pl
 from lightning.pytorch.tuner import Tuner
+from stargan_vc.net import Generator1
 
 import dsp
 from common_nn import ParallelTransposedConvolutionalBlock, LinearNorm
 from new_new_dataset import HFCDataModule
 
-class CombinerAutoEncoder(pl.LightningModule):
+class Combiner(pl.LightningModule):
     def __init__(self, hp, n_speakers):
-        super(CombinerAutoEncoder, self).__init__()
+        super(Combiner, self).__init__()
         self.lr = hp.combiner.lr
-        self.combiner = Combiner(hp, n_speakers)
+        if hp.combiner.name == 'rnn':
+            self.combiner = HFCCombiner(hp, n_speakers)
+        elif hp.combiner.name =='stargan':
+            self.combiner = Generator1(
+                hp.num_mels, 
+                n_speakers, 
+                hp.combiner.zdim, 
+                hp.combiner.hdim, 
+                hp.combiner.sdim,
+            )
+        else:
+            raise NotImplementedError()
         self.hp = hp
         self.n_speakers = n_speakers
         self.f0_bins = hp.control_variables.f0_bins
+    
+    def forward(self, batch):
+        mel, f0, vuv, speaker_id, spkr_emb = batch
+        #mel = mel.float()
+        f0_idx = dsp.bin_tensor(f0, self.f0_bins, self.hp.control_variables.f0_min, self.hp.control_variables.f0_max)
+        is_voiced = vuv.float()
+        #mel = F.dropout(mel, p=0.2)
+        if self.hp.combiner.name == 'rnn':
+            out = self.combiner((mel, speaker_id, spkr_emb, f0_idx, is_voiced))
+        elif self.hp.combiner.name =='stargan':
+            out = self.combiner(mel.transpose(1,2), spkr_emb).transpose(1,2)
+        return out
+
     
     def training_step(self, batch):
         mel, f0, vuv, speaker_id, spkr_emb = batch
         #mel = mel.float()
         f0_idx = dsp.bin_tensor(f0, self.f0_bins, self.hp.control_variables.f0_min, self.hp.control_variables.f0_max)
         is_voiced = vuv.float()
-        mel = F.dropout(mel, p=0.2)
-        out = self.combiner((mel, speaker_id, spkr_emb, f0_idx, is_voiced))
+        #mel = F.dropout(mel, p=0.2)
+        if self.hp.combiner.name == 'rnn':
+            out = self.combiner((mel, speaker_id, spkr_emb, f0_idx, is_voiced))
+        elif self.hp.combiner.name =='stargan':
+            out = self.combiner(mel.transpose(1,2), spkr_emb).transpose(1,2)
         loss = F.mse_loss(out, mel)
         self.log('loss', loss, prog_bar=True)
         return loss
@@ -34,7 +62,7 @@ class CombinerAutoEncoder(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=self.lr)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, verbose=True)
-        return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'monitor': 'loss'}}
+        return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'monitor': 'loss', 'frequency': 1}}
 
 
 class ConvCombiner(nn.Module):
@@ -53,7 +81,7 @@ class TransformerCombiner(nn.Module):
     def forward(self, x):
         pass
 
-class Combiner(nn.Module):
+class HFCCombiner(nn.Module):
     def __init__(self, hp, n_speakers):
         #hidden_size, spectral_width, output_width, n_layers, num_bins, dropout=0.1, rnn_mult=3.):
         super(Combiner, self).__init__()

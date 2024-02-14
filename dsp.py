@@ -23,6 +23,17 @@ col_names = ['t', 'f0', 'I',' Rd', 'CoG', 'ST',
              'MVF_HNM', 'MFV_AS_IHPC', 'MVF_AS_IHPC_ICPC']
 
 
+def normalise_mel(mel):
+    mel = mel + 11.5129
+    mel = mel / (11.5129 + 2)
+    return mel
+
+def denormalise_mel(mel):
+    mel = mel * (11.5129 + 2)
+    mel = mel - 11.5129
+    return mel
+
+
 def plotspect(spect, name=''):
     plt.imshow(spect.numpy(), aspect='auto')
     plt.title(name)
