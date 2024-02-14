@@ -84,7 +84,7 @@ class TransformerCombiner(nn.Module):
 class HFCCombiner(nn.Module):
     def __init__(self, hp, n_speakers):
         #hidden_size, spectral_width, output_width, n_layers, num_bins, dropout=0.1, rnn_mult=3.):
-        super(Combiner, self).__init__()
+        super(HFCCombiner, self).__init__()
         # Insert some random noise into the net -- set the width here
         # Replacing noise with f0, TODO fix
         self.noise_width = 513
@@ -110,20 +110,24 @@ class HFCCombiner(nn.Module):
         self.control_variable_lin = nn.Linear(self.speaker_emb_dim, self.trans_size)
         self.spectral_residual = nn.Linear(hp.model.hidden_size, self.trans_size)
 
-        self.rnn = nn.LSTM(
-            hp.num_mels + self.speaker_emb_dim, 
-            hp.combiner.rnn_size,
-            hp.combiner.n_layers, 
-            dropout=hp.combiner.drop, 
-            batch_first=True, 
-            bidirectional=True,
-        )
+        if self.use_f0:
+            self.rnn = nn.GRU(4 * self.trans_size, hp.combiner.rnn_size, hp.combiner.n_layers, dropout=3. * hp.combiner.drop, batch_first=True, bidirectional=True)
+        else:
+            self.rnn = nn.GRU(3 * self.trans_size, hp.combiner.rnn_size, hp.combiner.n_layers, dropout=3. * hp.combiner.drop, batch_first=True, bidirectional=True)
 
-        self.lin = LinearNorm(2*hp.combiner.rnn_size, hp.num_mels)
+        #self.rnn = nn.LSTM(
+        #    hp.num_mels + self.speaker_emb_dim, 
+        #    hp.combiner.rnn_size,
+        #    hp.combiner.n_layers, 
+        #    dropout=hp.combiner.drop, 
+        #    batch_first=True, 
+        #    bidirectional=True,
+        #)
+
+        self.lin = LinearNorm(hp.combiner.rnn_size*2, hp.num_mels)
 
     def forward(self, features):
         spectral, speaker_id, spkr_emb, f0, is_voiced = features
-
         batch_size, seq_length, spectral_width = spectral.shape
 
         # Using f0 onehot instead of embedding. TODO use embedding instead
@@ -131,17 +135,31 @@ class HFCCombiner(nn.Module):
         speaker_id = spkr_emb.squeeze(1)
         speaker_id = speaker_id.repeat(1, seq_length, 1)
 
-        #speaker_id = self.control_variable_PTCB(speaker_id)
-        #spectral = self.spectral_PTCB(spectral)
-        x = torch.cat((spectral, speaker_id), 2)
+        noise = torch.rand((batch_size, seq_length, self.noise_width), device=spectral.device)
+
+        noise = self.dropout(F.relu(self.aperiodicity_lin(noise)))
+
+        speaker_id = self.control_variable_PTCB(speaker_id)
+
+        spectral = self.spectral_PTCB(spectral)
+        if self.use_f0:
+            #f0 = self.f0_embedding(f0)
+            f0 = nn.functional.one_hot(f0, self.f0_dims).float()
+            f0 = self.f0_PTCB(f0)
+            unvoiced_f0 = is_voiced * f0
+            f0 = self.merge_voicing(torch.cat((unvoiced_f0, f0), 2))
+
+        # SECTION: Combine F0 and spectral features
+        if self.use_f0:
+            x = torch.cat((spectral, f0, speaker_id, noise), 2)
+        else:
+            x = torch.cat((spectral, speaker_id, noise), 2)
         out, _ = self.rnn(x)
 
         # Apply linear layer to RNN output
         output = self.lin(out)
 
         return output
-
-
 
     
 

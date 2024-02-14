@@ -137,7 +137,6 @@ class HFC(pl.LightningModule):
 
     def backward_G(self, adversarial=True):
         # G is hider and combiner together
-        adversarial = True
 
         if adversarial:
             # newly updated finder can generate a better training signal
