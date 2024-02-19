@@ -122,7 +122,7 @@ class HFCDataModule(pl.LightningDataModule):
 def collate_fn_val(batch):
     return collate_fn(batch, max_len=10000)
 
-def collate_fn(batch, max_len=200):
+def collate_fn(batch, max_len=400):
     # A data tuple has the form:
     # waveform, sample_rate, label, speaker_id, utterance_number
 
@@ -154,6 +154,7 @@ def collate_fn(batch, max_len=200):
     ids = torch.LongTensor(ids)
     spkr_embs = torch.stack(spkr_embs)
     return mels, f0s, vuvs, ids, spkr_embs
+    #out = self.combiner((mel, speaker_id, spkr_emb, f0_idx, is_voiced))
 
 def crop_indices(batch, max_len=200):
     batch = [item.t() for item in batch]

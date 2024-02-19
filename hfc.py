@@ -88,7 +88,7 @@ class HFC(pl.LightningModule):
         self.hifigan = None
 
         # The 'combiner loss' criterion
-        self.g_criterion = nn.MSELoss()
+        self.g_criterion = nn.L1Loss() #nn.MSELoss()
         # Ignore (for now) index associated with unvoiced regions
         self.hfc_losses = HFCLosses(mode=hp.loss_mode)
         print('n_speakers = ', n_speakers)

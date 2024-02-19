@@ -42,8 +42,8 @@ training_finder:
   lr: 0.001
 
 training:
-  epochs: 1000
-  log_n_audios: 1
+  epochs: 1000000
+  log_n_audios: 5
   batch_size: 64
   lr_find: False
   wandb: False
@@ -54,7 +54,7 @@ training:
   lr_f: 0.001
   val_check_interval: 10 # in epochs
   metric: 'combiner_loss'
-  adversarial_start: 50000
+  adversarial_start: 8000000
   scheduler_step: 500
   max_len: 100
 
@@ -78,4 +78,4 @@ fmax: 8000
 
 model:
   hidden_size: 80
-  beta: 1.
+  beta: .1

@@ -65,6 +65,13 @@ class Combiner(pl.LightningModule):
         return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'monitor': 'loss', 'frequency': 1}}
 
 
+class IdentityCombiner(nn.Module):
+    def __init__(self, hp, n_speakers):
+        super(IdentityCombiner, self).__init__()
+
+    def forward(self, x):
+        return x
+
 class ConvCombiner(nn.Module):
     def __init__(self, hp, n_speakers):
         super(Combiner, self).__init__()

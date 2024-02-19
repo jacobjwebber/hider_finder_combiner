@@ -4,4 +4,4 @@ name: rnn
 interior_size: 200
 
 rnn:
-  n_layers: 8
+  n_layers: 3

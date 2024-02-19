@@ -1,6 +1,6 @@
     ## Hider
     rnn_size : 200 
-    rnn_mult: 3. # multiply dropout by this number when in rnn
-    n_layers : 3 
+    rnn_mult: 1. # multiply dropout by this number when in rnn
+    n_layers : 2 
     drop : 0.01
     denoising: 0.
