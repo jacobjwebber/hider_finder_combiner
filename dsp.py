@@ -280,6 +280,11 @@ class FeatureEngineer:
         return signal
 
 def bin_tensor(tensor, num_bins, min_val, max_val):
+    min_val = torch.log(min_val)
+    max_val = torch.log(max_val)
+
+    zeros_mask = torch.logical_not(torch.isclose(tensor, torch.zeros_like(tensor))).int()
+    tensor = torch.log(tensor) * zeros_mask
     bins = torch.linspace(min_val, max_val, num_bins-1, device=tensor.device)
     bin_indices = torch.bucketize(tensor, bins)
     return bin_indices

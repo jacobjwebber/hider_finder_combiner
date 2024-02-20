@@ -24,23 +24,29 @@ class Combiner(pl.LightningModule):
                 hp.combiner.zdim, 
                 hp.combiner.hdim, 
                 hp.combiner.sdim,
+                hp.combiner.f0_dim,
+                hp.combiner.f0_conditioning,
             )
         else:
             raise NotImplementedError()
+        print('Combiner: ', hp.combiner.name)
         self.hp = hp
         self.n_speakers = n_speakers
         self.f0_bins = hp.control_variables.f0_bins
     
-    def forward(self, batch):
-        mel, f0, vuv, speaker_id, spkr_emb = batch
+    def forward(self, 
+                hidden,
+                f0_idx, 
+                vuv, 
+                speaker_id,
+                spkr_emb,
+                ):
         #mel = mel.float()
-        f0_idx = dsp.bin_tensor(f0, self.f0_bins, self.hp.control_variables.f0_min, self.hp.control_variables.f0_max)
-        is_voiced = vuv.float()
         #mel = F.dropout(mel, p=0.2)
         if self.hp.combiner.name == 'rnn':
-            out = self.combiner((mel, speaker_id, spkr_emb, f0_idx, is_voiced))
+            out = self.combiner(hidden, speaker_id, spkr_emb, f0_idx, vuv)
         elif self.hp.combiner.name =='stargan':
-            out = self.combiner(mel.transpose(1,2), spkr_emb).transpose(1,2)
+            out = self.combiner(hidden.transpose(1,2), spkr_emb, f0=f0_idx).transpose(1,2)
         return out
 
     
@@ -133,8 +139,11 @@ class HFCCombiner(nn.Module):
 
         self.lin = LinearNorm(hp.combiner.rnn_size*2, hp.num_mels)
 
-    def forward(self, features):
-        spectral, speaker_id, spkr_emb, f0, is_voiced = features
+    def forward(self, spectral,
+                speaker_id,
+                spkr_emb,
+                f0,
+                is_voiced):
         batch_size, seq_length, spectral_width = spectral.shape
 
         # Using f0 onehot instead of embedding. TODO use embedding instead

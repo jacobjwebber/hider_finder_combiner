@@ -120,7 +120,7 @@ class HFCDataModule(pl.LightningDataModule):
     
     
 def collate_fn_val(batch):
-    return collate_fn(batch, max_len=10000)
+    return collate_fn(batch) #, max_len=10000)
 
 def collate_fn(batch, max_len=400):
     # A data tuple has the form:

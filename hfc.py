@@ -124,7 +124,7 @@ class HFC(pl.LightningModule):
     def forward(self):
         """Uses hider network to generate hidden representation"""
         self.hidden = self.hider(self.mel)
-        self.controlled = self.combiner((self.hidden, self.f0, self.is_voiced, self.speaker_id, self.spkr_emb))
+        self.controlled = self.combiner(self.hidden, self.f0_idx, self.is_voiced, self.speaker_id, self.spkr_emb)
 
     def backward_F(self):
         # Attempt to predict the control variable from the hidden repr
@@ -176,6 +176,14 @@ class HFC(pl.LightningModule):
         self.clip_gradients(g_opt, gradient_clip_val=self.hp.training.clip, gradient_clip_algorithm="norm")
         g_opt.step()
 
+        if self.global_step % 1000000000000000 == 0:
+            self.new_speaker = torch.load(
+                P(os.path.expanduser(self.hp.dataset.root)) / P(self.hp.dataset.save_as) / P('spkr_emb/254/12312/254_12312_000004_000000.pt')
+            ).unsqueeze(0).to(self.mel.device)
+            if not self.hifigan:
+                self.hifigan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-libritts-22050Hz", savedir="hifigan_checkpoints", run_opts={"device": self.mel.device})
+            self.log_audio(self.global_step)
+
 
     def training_step(self, batch):
         self.set_input(*batch)
@@ -201,8 +209,8 @@ class HFC(pl.LightningModule):
         if batch_idx < self.hp.training.log_n_audios and self.hp.training.wandb:
             if not self.hifigan:
                 self.hifigan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-libritts-22050Hz", savedir="hifigan_checkpoints", run_opts={"device": self.mel.device})
-            self.new_controlled = self.combiner((self.hidden, self.f0, self.is_voiced, 0, self.new_speaker))
-            self.log_audio(batch_idx)
+            self.new_controlled = self.combiner(self.hidden, self.f0_idx, self.is_voiced, 0, self.new_speaker)
+            self.log_audio(self.global_step)
     
     def on_train_epoch_end(self):
         # Step learning rate schedulers
@@ -211,11 +219,13 @@ class HFC(pl.LightningModule):
     
     def log_audio(self, n):
         # Depends on wandb -- TODO make an option for local or whatever
-        controlled = self.controlled.transpose(1,2)
-        new_controlled = self.new_controlled.transpose(1,2)
+        controlled = self.controlled.transpose(1,2)[0].unsqueeze(0)
+        new_controlled = self.new_controlled.transpose(1,2)[0].unsqueeze(0)
+        mel = self.mel[0].unsqueeze(0)
+
         audio = self.hifigan.decode_batch(dsp.denormalise_mel(controlled))
         audio_changed = self.hifigan.decode_batch(dsp.denormalise_mel(new_controlled))
-        audio_vc_copy = self.hifigan.decode_batch(dsp.denormalise_mel(self.mel))
+        audio_vc_copy = self.hifigan.decode_batch(dsp.denormalise_mel(mel))
 
 
         #self.logger.log_image('gt_spect', [self.mel.squeeze().cpu().numpy()], step=self.global_step)
@@ -231,8 +241,8 @@ class HFC(pl.LightningModule):
             ],
             'spectrograms2': [
                 wandb.Image(self.plot_mels(
-                    [self.mel, controlled, new_controlled, ],
-                    [self.f0_idx, self.f0_idx, self.f0_idx, ],
+                    [mel.detach(), controlled.detach(), new_controlled.detach(), ],
+                    [self.f0_idx[0], self.f0_idx[0], self.f0_idx[0], ],
                     ['gt', 'hfc_copy', 'modified', ]
                     ))
             ],
@@ -251,7 +261,7 @@ class HFC(pl.LightningModule):
         for ax, mel, f0, title in zip(axes, mels, f0s, titles):
             mel = mel.squeeze().cpu()
             ax.imshow(mel, aspect='auto', origin='lower', extent=[0, mel.shape[1], 0, self.hp.control_variables.f0_bins])
-            ax.plot(f0.squeeze().cpu(), color='firebrick')
+            ax.plot(f0.detach().squeeze().cpu(), color='firebrick')
             ax.set_title(title)
             ax.set_ylabel('f0 index')
         axes[-1].set_xlabel('time')
