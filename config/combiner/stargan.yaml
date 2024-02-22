@@ -4,3 +4,6 @@ name: stargan
 zdim: 16
 hdim: 64 
 sdim: 16
+f0_dim: 16
+f0_conditioning: False
+pretrained_embedding: False

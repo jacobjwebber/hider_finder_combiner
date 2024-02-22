@@ -1,8 +1,8 @@
 root: ~/datasets
-subset: train-clean-100
+subset: train-clean-360
 save_as: LibriTTS
 #validation_split: 0.005
-valid_size: 300
+valid_size: 9999999
 rsync: False
 download: True
 valid_json: preprocessed_data/LibriTTS/valid.json

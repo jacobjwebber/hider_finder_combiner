@@ -2,6 +2,7 @@
 import torch
 from torchaudio import functional as fa
 import torchaudio
+import math
 
 import numpy as np
 import pyworld
@@ -280,8 +281,8 @@ class FeatureEngineer:
         return signal
 
 def bin_tensor(tensor, num_bins, min_val, max_val):
-    min_val = torch.log(min_val)
-    max_val = torch.log(max_val)
+    min_val = math.log(min_val)
+    max_val = math.log(max_val)
 
     zeros_mask = torch.logical_not(torch.isclose(tensor, torch.zeros_like(tensor))).int()
     tensor = torch.log(tensor) * zeros_mask

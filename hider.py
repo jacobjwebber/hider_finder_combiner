@@ -1,8 +1,42 @@
 import torch.nn as nn
 import torch.nn.functional as F
 from common_nn import LinearNorm
+from stargan_vc.net import Generator1
+import lightning.pytorch as pl
 
-class Hider(nn.Module):
+class Hider(pl.LightningModule):
+    def __init__(self, hp):
+        super(Hider, self).__init__()
+        self.lr = 0.001
+        if hp.hider.name == 'rnn':
+            self.combiner = HiderHFC(hp)
+        elif hp.hider.name =='stargan':
+            self.hider = Generator1(
+                hp.num_mels, 
+                0, 
+                hp.hider.zdim, 
+                hp.hider.hdim, 
+                0,
+                0,
+                f0_conditioning=False,
+            )
+        else:
+            raise NotImplementedError()
+        print('hider: ', hp.hider.name)
+        self.hp = hp
+    
+    def forward(self, 
+                mel,
+                ):
+        #mel = mel.float()
+        #mel = F.dropout(mel, p=0.2)
+        if self.hp.hider.name == 'rnn':
+            out = self.hider(mel)
+        elif self.hp.hider.name =='stargan':
+            out = self.hider(mel, None).transpose(1,2)
+        return out
+
+class HiderHFC(nn.Module):
     def __init__(self, hp):
         #hidden_size, input_width, output_width, n_layers, dropout=0.1, denoising=0.1):
         """

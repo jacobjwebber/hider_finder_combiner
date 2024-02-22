@@ -18,14 +18,19 @@ class Combiner(pl.LightningModule):
         if hp.combiner.name == 'rnn':
             self.combiner = HFCCombiner(hp, n_speakers)
         elif hp.combiner.name =='stargan':
+            if hp.combiner.f0_conditioning:
+                f0_dims = hp.control_variables.f0_bins
+            else:
+                f0_dims = 0
             self.combiner = Generator1(
                 hp.num_mels, 
                 n_speakers, 
                 hp.combiner.zdim, 
                 hp.combiner.hdim, 
                 hp.combiner.sdim,
-                hp.combiner.f0_dim,
-                hp.combiner.f0_conditioning,
+                f0_dims,
+                hp.combiner.f0_conditioning, 
+                pretrained_embedding=hp.combiner.pretrained_embedding,
             )
         else:
             raise NotImplementedError()
@@ -33,6 +38,7 @@ class Combiner(pl.LightningModule):
         self.hp = hp
         self.n_speakers = n_speakers
         self.f0_bins = hp.control_variables.f0_bins
+        self.pretrained_embedding = hp.combiner.pretrained_embedding
     
     def forward(self, 
                 hidden,
@@ -46,7 +52,11 @@ class Combiner(pl.LightningModule):
         if self.hp.combiner.name == 'rnn':
             out = self.combiner(hidden, speaker_id, spkr_emb, f0_idx, vuv)
         elif self.hp.combiner.name =='stargan':
-            out = self.combiner(hidden.transpose(1,2), spkr_emb, f0=f0_idx).transpose(1,2)
+            if self.pretrained_embedding:
+                spkr = spkr_emb
+            else:
+                spkr = speaker_id
+            out = self.combiner(hidden.transpose(1,2), spkr, f0=f0_idx).transpose(1,2)
         return out
 
     

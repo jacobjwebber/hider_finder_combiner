@@ -106,7 +106,7 @@ class HFCDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=True,
             collate_fn=collate_fn,
-            num_workers=16,
+            num_workers=8,
         )
     
     def val_dataloader(self):
@@ -279,7 +279,7 @@ def main(hp):
     dataset.populate_speaker_idx()
 
     # The below was only done once -- moving from hifigan split json to my own
-    #load_split_from_json(hp.dataset.train_json, hp.dataset.valid_json, hp.dataset.test_json, dataset)
+    load_split_from_json(hp.dataset.train_json, hp.dataset.valid_json, hp.dataset.test_json, dataset)
 
     # load speaker2ix from json file if it exists
 

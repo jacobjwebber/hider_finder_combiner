@@ -31,21 +31,26 @@ class Generator1(nn.Module):
 
         # We do not need an embedding here because we are using a pretrained spkr emb
         # TODO make learned embedding an option
-        if pretrained_embedding:
-            self.eb1 = LinearNorm(192, s_ch)
-        else:
-            self.eb1 = nn.Embedding(n_spk, s_ch)
+        if s_ch > 0:
+            if pretrained_embedding:
+                self.eb1 = LinearNorm(192, s_ch)
+            else:
+                self.eb1 = nn.Embedding(n_spk, s_ch)
+
         self.src_conditioning = src_conditioning
         self.use_pretrained_embedding = pretrained_embedding
         self.f0_conditioning = f0_conditioning
+        self.s_ch = s_ch
 
     def __call__(self, xin, k_t, k_s=None, f0=None):
         device = xin.device
         B, n_mels, n_frame_ = xin.shape
-        B, n_frame_ = f0.shape
-        assert n_mels == 80
 
-        if self.use_pretrained_embedding:
+        assert n_mels == 80, f"{n_mels}, {B}, {n_frame_}"
+
+        if self.s_ch == 0:
+            pass
+        elif self.use_pretrained_embedding:
             kk_t = k_t.squeeze(1).squeeze(1)
             assert len(kk_t.shape) == 2, f"{kk_t.shape}"
             assert kk_t.shape[1] == 192, f"{kk_t.shape}" # TODO reduce this dimensionality
@@ -78,28 +83,33 @@ class Generator1(nn.Module):
         if self.src_conditioning: 
             out = md.concat_dim1(out,srcspk_emb)
         out = self.le5(out)
-
-        out = md.concat_dim1(out,trgspk_emb)
+        
+        if self.s_ch > 0:
+            out = md.concat_dim1(out,trgspk_emb)
         if self.f0_conditioning: 
             out = md.concat_dim1(out,f0_emb)
         out = self.le6(out)
 
-        out = md.concat_dim1(out,trgspk_emb)
+        if self.s_ch > 0:
+            out = md.concat_dim1(out,trgspk_emb)
         if self.f0_conditioning: 
             out = md.concat_dim1(out,f0_emb)
         out = self.le7(out)
 
-        out = md.concat_dim1(out,trgspk_emb)
+        if self.s_ch > 0:
+            out = md.concat_dim1(out,trgspk_emb)
         if self.f0_conditioning: 
             out = md.concat_dim1(out,f0_emb)
         out = self.le8(out)
 
-        out = md.concat_dim1(out,trgspk_emb)
+        if self.s_ch > 0:
+            out = md.concat_dim1(out,trgspk_emb)
         if self.f0_conditioning: 
             out = md.concat_dim1(out,f0_emb)
         out = self.le9(out)
 
-        out = md.concat_dim1(out,trgspk_emb)
+        if self.s_ch > 0:
+            out = md.concat_dim1(out,trgspk_emb)
         if self.f0_conditioning: 
             out = md.concat_dim1(out,f0_emb)
         out = self.le10(out)
