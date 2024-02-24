@@ -100,8 +100,8 @@ class HFC(pl.LightningModule):
         self.f_opt = Adam(self.finder.parameters(), lr=self.hp.training.lr_f)
         #self.lr_schedulers = {'g_opt': self.g_opt, 'f_opt': self.f_opt} TODO
         #self.g_schedj = torch.optim.lr_scheduler.StepLR(self.g_opt, step_size=50, gamma=0.5) # TODO add this 
-        self.g_schedj = torch.optim.lr_scheduler.ReduceLROnPlateau(self.g_opt, verbose=True)
-        self.f_schedj = torch.optim.lr_scheduler.ReduceLROnPlateau(self.f_opt, verbose=True)
+        self.g_schedj = torch.optim.lr_scheduler.ReduceLROnPlateau(self.g_opt, verbose=True, patience=20)
+        self.f_schedj = torch.optim.lr_scheduler.ReduceLROnPlateau(self.f_opt, verbose=True, patience=20)
         return [self.g_opt, self.f_opt]
 
 
@@ -124,12 +124,10 @@ class HFC(pl.LightningModule):
     def forward(self):
         """Uses hider network to generate hidden representation"""
         self.hidden = self.hider(self.mel)
-        self.controlled = self.combiner(self.hidden) # , self.f0_idx, self.is_voiced, self.speaker_id, self.spkr_emb)
+        self.controlled = self.combiner(self.hidden, self.speaker_id) # , self.f0_idx, self.is_voiced, self.speaker_id, self.spkr_emb)
 
     def backward_F(self):
         # Attempt to predict the control variable from the hidden repr
-        print('THIS SHOULD NEVER RUN')
-        exit()
         pred_f0, pred_speaker_id = self.finder(self.hidden.detach())
 
         self.finder_loss_id = self.hfc_losses.finder_loss(pred_speaker_id, self.speaker_id)
@@ -140,21 +138,20 @@ class HFC(pl.LightningModule):
     def backward_G(self, adversarial=True):
         # G is hider and combiner together
 
-        #if adversarial:
-        #    # newly updated finder can generate a better training signal
-        #    pred_f0, pred_speaker_id = self.finder(self.hidden)
-        #    # Softmax converts to probabilities, which we can use for leakage loss
-        #    self.leakage_loss_id = self.hfc_losses.leakage_loss(pred_speaker_id)
-        #else:
-        self.leakage_loss_id = 0.
+        if adversarial:
+            # newly updated finder can generate a better training signal
+            pred_f0, pred_speaker_id = self.finder(self.hidden)
+            self.leakage_loss_id = self.hfc_losses.leakage_loss(pred_speaker_id)
+        else:
+            self.leakage_loss_id = 0.
 
-        # Use output from forward earlier to do mse between resynthed, controlled output and
+        # Use output from forward earlier to find loss between resynthed, controlled output and
         # ground truth input
         self.combiner_loss = self.g_criterion(self.controlled, self.mel.transpose(1,2))
 
         # Use mean to reduce along all timesteps
         self.leakage_loss = self.leakage_loss_id # + leakage los for f0
-        self.g_losses = self.combiner_loss #+ self.hp.model.beta * self.leakage_loss
+        self.g_losses = self.combiner_loss + self.hp.model.beta * self.leakage_loss
 
     def optimize_parameters(self):
         g_opt, f_opt = self.optimizers()
@@ -163,14 +160,12 @@ class HFC(pl.LightningModule):
         # Generate hidden repr and output
         # Train finder
         self.forward()
-        '''
         self.backward_F()
 
         f_opt.zero_grad() # TODO: check this
         self.manual_backward(self.finder_loss)
         self.clip_gradients(f_opt, gradient_clip_val=self.hp.training.clip, gradient_clip_algorithm="norm")
         f_opt.step()
-        '''
 
 
         # Train hider and combiner with updated Finder for leakage loss
@@ -195,7 +190,7 @@ class HFC(pl.LightningModule):
         self.optimize_parameters()
         self.log('leakage_loss', self.leakage_loss, prog_bar=True)
         self.log('combiner_loss', self.combiner_loss, prog_bar=True)
-        #self.log('finder_loss', self.finder_loss, prog_bar=True)
+        self.log('finder_loss', self.finder_loss, prog_bar=True)
         self.log('g_losses', self.g_losses, prog_bar=True)
         return self.g_losses
 
@@ -206,30 +201,30 @@ class HFC(pl.LightningModule):
         ).unsqueeze(0).to(self.mel.device)
         self.forward()
         self.backward_G(adversarial=True)
-        #self.backward_F()
-        #self.log('val/leakage_loss', self.leakage_loss, prog_bar=True)
-        self.log('val/combiner_loss', self.combiner_loss, prog_bar=True)
-        #self.log('val/finder_loss', self.finder_loss, prog_bar=True)
-        self.log('val/g_losses', self.g_losses, prog_bar=True)
+        self.backward_F()
+        self.log('val/leakage_loss', self.leakage_loss, prog_bar=True, sync_dist=True)
+        self.log('val/combiner_loss', self.combiner_loss, prog_bar=True, sync_dist=True)
+        self.log('val/finder_loss', self.finder_loss, prog_bar=True, sync_dist=True)
+        self.log('val/g_losses', self.g_losses, prog_bar=True, sync_dist=True)
         if batch_idx < self.hp.training.log_n_audios and self.hp.training.wandb:
             if not self.hifigan:
                 self.hifigan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-libritts-22050Hz", savedir="hifigan_checkpoints", run_opts={"device": self.mel.device})
-            #self.new_controlled = self.combiner(self.hidden, self.f0_idx, self.is_voiced, 0, self.new_speaker)
+            self.new_controlled = self.combiner(self.hidden, torch.ones_like(self.speaker_id) * 3) # self.f0_idx, self.is_voiced, 3, self.new_speaker)
             self.log_audio(self.global_step)
     
     def on_train_epoch_end(self):
         # Step learning rate schedulers
         self.g_schedj.step(self.trainer.callback_metrics['combiner_loss'])
-        #self.f_schedj.step(self.trainer.callback_metrics['finder_loss'])
+        self.f_schedj.step(self.trainer.callback_metrics['finder_loss'])
     
     def log_audio(self, n):
         # Depends on wandb -- TODO make an option for local or whatever
         controlled = self.controlled.transpose(1,2)[0].unsqueeze(0)
-        #new_controlled = self.new_controlled.transpose(1,2)[0].unsqueeze(0)
+        new_controlled = self.new_controlled.transpose(1,2)[0].unsqueeze(0)
         mel = self.mel[0].unsqueeze(0)
 
         audio = self.hifigan.decode_batch(dsp.denormalise_mel(controlled))
-        #audio_changed = self.hifigan.decode_batch(dsp.denormalise_mel(new_controlled))
+        audio_changed = self.hifigan.decode_batch(dsp.denormalise_mel(new_controlled))
         audio_vc_copy = self.hifigan.decode_batch(dsp.denormalise_mel(mel))
 
 
@@ -237,26 +232,27 @@ class HFC(pl.LightningModule):
         #self.logger.log_image('copy_spect', [controlled.squeeze().cpu().numpy()], step=self.global_step)
         #self.logger.log_image('modified_spect', [new_controlled.squeeze().cpu().numpy()], step=self.global_step)
 
+        fig = self.plot_mels(
+                    [mel.detach(), controlled.detach(), new_controlled.detach(), ],
+                    [self.f0_idx[0], self.f0_idx[0], self.f0_idx[0], ],
+                    ['gt', 'hfc_copy', 'modified', ]
+                    )
 
         metrics = {
             'audios': [
                 wandb.Audio(audio.squeeze().cpu().numpy(), sample_rate=self.hp.sr, caption='hfc_copy'), 
-                #wandb.Audio(audio_changed.squeeze().cpu().numpy(), sample_rate=self.hp.sr, caption='modified'),
+                wandb.Audio(audio_changed.squeeze().cpu().numpy(), sample_rate=self.hp.sr, caption='modified'),
                 wandb.Audio(audio_vc_copy.squeeze().cpu().numpy(), sample_rate=self.hp.sr, caption='vc_copy'),
             ],
             'spectrograms2': [
-                wandb.Image(self.plot_mels(
-                    [mel.detach(), controlled.detach()], #new_controlled.detach(), ],
-                    [self.f0_idx[0], self.f0_idx[0], self.f0_idx[0], ],
-                    ['gt', 'hfc_copy', 'modified', ]
-                    ))
-            ],
+                wandb.Image(fig),]
             #'spectrograms': [
             #    wandb.Image(self.mel.squeeze().cpu().numpy(), caption='gt'),
             #    wandb.Image(controlled.squeeze().cpu().numpy(), caption='copy'),
             #    wandb.Image(new_controlled.squeeze().cpu().numpy(), caption='modified'),
             #    ]
         }
+        fig.clf()
         self.logger.log_metrics(metrics)
         #self.logger.log_audio('copy_audio', audio.squeeze().cpu().numpy(), sample_rate=self.hp.sr)
         #self.logger.log_audio('modified_audio', audio_changed.squeeze().cpu().numpy(), sample_rate=self.hp.sr)

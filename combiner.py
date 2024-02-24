@@ -6,6 +6,7 @@ import hydra
 import lightning.pytorch as pl
 from lightning.pytorch.tuner import Tuner
 from stargan_vc.net import Generator1
+from hifigan_conv.model import Generator
 
 import sys
 
@@ -34,16 +35,19 @@ class Combiner(pl.LightningModule):
                 False, #hp.combiner.f0_conditioning, 
                 False, #pretrained_embedding=hp.combiner.pretrained_embedding,
             )
+        elif hp.combiner.name == 'hifigan':
+            self.combiner = Generator(hp.combiner, hp.num_mels, hp.num_mels, n_speakers)
         else:
             raise NotImplementedError()
         print('Combiner: ', hp.combiner.name)
         self.hp = hp
         self.n_speakers = n_speakers
         self.f0_bins = hp.control_variables.f0_bins
-        self.pretrained_embedding = hp.combiner.pretrained_embedding
+        #self.pretrained_embedding = hp.combiner.pretrained_embedding
     
     def forward(self, 
-                hidden):
+                hidden,
+                spkr):
                 # f0_idx, 
                 # vuv, 
                 # speaker_id,
@@ -55,11 +59,14 @@ class Combiner(pl.LightningModule):
             sys.exit("stop !!! 2o3ifhwovv")
             out = self.combiner(hidden, speaker_id, spkr_emb, f0_idx, vuv)
         elif self.hp.combiner.name =='stargan':
+            sys.exit("stop !!! 2o3ifhwovv")
             # if self.pretrained_embedding:
             #     spkr = spkr_emb
             # else:
             #     spkr = speaker_id
             out = self.combiner(hidden.transpose(1,2)).transpose(1,2) #  spkr, f0=f0_idx
+        elif self.hp.combiner.name == 'hifigan':
+            out = self.combiner(hidden.transpose(1,2), spkr).transpose(1,2)
         return out
 
     

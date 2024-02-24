@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from common_nn import LinearNorm
 from stargan_vc.net import Generator1
+from hifigan_conv.model import Generator
 import lightning.pytorch as pl
 
 class Hider(pl.LightningModule):
@@ -20,6 +21,8 @@ class Hider(pl.LightningModule):
                 0,
                 f0_conditioning=False,
             )
+        elif hp.hider.name == 'hifigan':
+            self.hider = Generator(hp.hider, hp.num_mels, hp.num_mels)
         else:
             raise NotImplementedError()
         print('hider: ', hp.hider.name)
@@ -34,6 +37,10 @@ class Hider(pl.LightningModule):
             out = self.hider(mel)
         elif self.hp.hider.name =='stargan':
             out = self.hider(mel).transpose(1,2)
+        elif self.hp.hider.name == 'hifigan':
+            out = self.hider(mel).transpose(1,2)
+        else:
+            raise NotImplementedError()
         return out
 
 class HiderHFC(nn.Module):

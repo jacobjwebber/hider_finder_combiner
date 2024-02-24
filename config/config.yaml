@@ -1,8 +1,8 @@
 defaults:
   - dataset: my_libri
-  - hider: rnn
+  - hider: hifigan
   - finder: rnn
-  - combiner: stargan
+  - combiner: hifigan
   #- override hydra/launcher: submitit_local
   - override hydra/sweeper: optuna
 
@@ -54,7 +54,7 @@ training:
   lr_f: 0.001
   val_check_interval: 1 # in epochs
   metric: 'combiner_loss'
-  adversarial_start: 8000000
+  adversarial_start: 8000
   scheduler_step: 500
   max_len: 100
 
@@ -78,4 +78,4 @@ fmax: 8000
 
 model:
   hidden_size: 80
-  beta: .1
+  beta: .05
