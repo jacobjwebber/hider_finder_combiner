@@ -7,6 +7,8 @@ import lightning.pytorch as pl
 from lightning.pytorch.tuner import Tuner
 from stargan_vc.net import Generator1
 
+import sys
+
 import dsp
 from common_nn import ParallelTransposedConvolutionalBlock, LinearNorm
 from new_new_dataset import HFCDataModule
@@ -27,10 +29,10 @@ class Combiner(pl.LightningModule):
                 n_speakers, 
                 hp.combiner.zdim, 
                 hp.combiner.hdim, 
-                hp.combiner.sdim,
+                0, #hp.combiner.sdim,
                 f0_dims,
-                hp.combiner.f0_conditioning, 
-                pretrained_embedding=hp.combiner.pretrained_embedding,
+                False, #hp.combiner.f0_conditioning, 
+                False, #pretrained_embedding=hp.combiner.pretrained_embedding,
             )
         else:
             raise NotImplementedError()
@@ -41,22 +43,23 @@ class Combiner(pl.LightningModule):
         self.pretrained_embedding = hp.combiner.pretrained_embedding
     
     def forward(self, 
-                hidden,
-                f0_idx, 
-                vuv, 
-                speaker_id,
-                spkr_emb,
-                ):
+                hidden):
+                # f0_idx, 
+                # vuv, 
+                # speaker_id,
+                # spkr_emb,
+                # ):
         #mel = mel.float()
         #mel = F.dropout(mel, p=0.2)
         if self.hp.combiner.name == 'rnn':
+            sys.exit("stop !!! 2o3ifhwovv")
             out = self.combiner(hidden, speaker_id, spkr_emb, f0_idx, vuv)
         elif self.hp.combiner.name =='stargan':
-            if self.pretrained_embedding:
-                spkr = spkr_emb
-            else:
-                spkr = speaker_id
-            out = self.combiner(hidden.transpose(1,2), spkr, f0=f0_idx).transpose(1,2)
+            # if self.pretrained_embedding:
+            #     spkr = spkr_emb
+            # else:
+            #     spkr = speaker_id
+            out = self.combiner(hidden.transpose(1,2)).transpose(1,2) #  spkr, f0=f0_idx
         return out
 
     

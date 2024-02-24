@@ -12,6 +12,9 @@ class Generator1(nn.Module):
         add_ch = 0 if src_conditioning==False else s_ch
         f0_ch = 0 if f0_conditioning==False else f0_ch
         self.le1 = md.ConvGLU1D(in_ch+add_ch, mid_ch, 9, 1, normtype)
+
+        self.le1 = nn.Conv1d(in_ch, in_ch, 3, 1, 1)
+        
         self.le2 = md.ConvGLU1D(mid_ch+add_ch, mid_ch, 8, 2, normtype)
         self.le3 = md.ConvGLU1D(mid_ch+add_ch, mid_ch, 8, 2, normtype)
         self.le4 = md.ConvGLU1D(mid_ch+add_ch, mid_ch, 5, 1, normtype)
@@ -42,32 +45,38 @@ class Generator1(nn.Module):
         self.f0_conditioning = f0_conditioning
         self.s_ch = s_ch
 
-    def __call__(self, xin, k_t, k_s=None, f0=None):
+    def __call__(self, xin): # , k_t, k_s=None, f0=None):
         device = xin.device
         B, n_mels, n_frame_ = xin.shape
 
         assert n_mels == 80, f"{n_mels}, {B}, {n_frame_}"
 
-        if self.s_ch == 0:
-            pass
-        elif self.use_pretrained_embedding:
-            kk_t = k_t.squeeze(1).squeeze(1)
-            assert len(kk_t.shape) == 2, f"{kk_t.shape}"
-            assert kk_t.shape[1] == 192, f"{kk_t.shape}" # TODO reduce this dimensionality
-            #trgspk_emb = kk_t.repeat(1, 1, n_frame_)
-            trgspk_emb = self.eb1(kk_t)
-        else:
-            kk_t = k_t*torch.ones(B).to(device, dtype=torch.int64)
-            trgspk_emb = self.eb1(kk_t)
+        # if self.s_ch == 0:
+        #     pass
+        # elif self.use_pretrained_embedding:
+        #     kk_t = k_t.squeeze(1).squeeze(1)
+        #     assert len(kk_t.shape) == 2, f"{kk_t.shape}"
+        #     assert kk_t.shape[1] == 192, f"{kk_t.shape}" # TODO reduce this dimensionality
+        #     #trgspk_emb = kk_t.repeat(1, 1, n_frame_)
+        #     trgspk_emb = self.eb1(kk_t)
+        # else:
+        #     kk_t = k_t*torch.ones(B).to(device, dtype=torch.int64)
+        #     trgspk_emb = self.eb1(kk_t)
 
-        if self.src_conditioning:
-            kk_s = k_s*torch.ones(B).to(device, dtype=torch.int64)
-            srcspk_emb = self.eb0(kk_s)
+        # if self.src_conditioning:
+        #     kk_s = k_s*torch.ones(B).to(device, dtype=torch.int64)
+        #     srcspk_emb = self.eb0(kk_s)
         
-        if self.f0_conditioning:
-            f0_emb = self.eb2(f0)
+        # if self.f0_conditioning:
+        #     f0_emb = self.eb2(f0)
+
+        assert not self.src_conditioning
+        assert self.s_ch==0
+        assert not self.f0_conditioning
 
         out = xin
+        out = self.le1(out)
+        return out
 
         if self.src_conditioning: out = md.concat_dim1(out,srcspk_emb)
         out = self.le1(out)

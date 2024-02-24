@@ -33,7 +33,7 @@ class Hider(pl.LightningModule):
         if self.hp.hider.name == 'rnn':
             out = self.hider(mel)
         elif self.hp.hider.name =='stargan':
-            out = self.hider(mel, None).transpose(1,2)
+            out = self.hider(mel).transpose(1,2)
         return out
 
 class HiderHFC(nn.Module):
