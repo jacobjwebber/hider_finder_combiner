@@ -123,4 +123,6 @@ lightning_logs
 wandb
 hfc_finder
 hfc_main
-hifigan_checkpointscache
+hifigan_checkpoints
+cache
+spk_emb_encoder_checkpoints
