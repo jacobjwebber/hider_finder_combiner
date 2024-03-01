@@ -1,0 +1,29 @@
+# Combiner
+
+name: fastspeech2
+
+use_pretrained_spkr_emb: True
+
+enc_d_model: 384
+
+# Decoder parameters
+dec_num_layers: 4
+dec_num_head: 2
+dec_d_model: 384
+dec_ffn_dim: 1024
+dec_k_dim: 384
+dec_v_dim: 384
+dec_dropout: 0.2
+
+# Postnet parameters
+postnet_embedding_dim: 512
+postnet_kernel_size: 5
+postnet_n_convolutions: 5
+postnet_dropout: 0.5
+
+# Common
+normalize_before: True
+ffn_type: 1dcnn #1dcnn or ffn
+ffn_cnn_kernel_size_list: [9, 1]
+pitch_pred_kernel_size: 3
+energy_pred_kernel_size: 3

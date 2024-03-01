@@ -88,7 +88,6 @@ class Generator(torch.nn.Module):
             spkr = spkr.unsqueeze(2).repeat(1, 1, n_frame_)
             x = torch.cat([x, spkr], dim=1)
         
-        if f0_idx is not None and 
 
         x = self.conv_pre(x)
 

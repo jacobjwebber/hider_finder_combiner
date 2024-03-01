@@ -7,6 +7,7 @@ import lightning.pytorch as pl
 from lightning.pytorch.tuner import Tuner
 from stargan_vc.net import Generator1
 from hifigan_conv.model import Generator
+from fastspeech2.fastspeech2_combiner import FastSpeech2Combiner
 
 import sys
 
@@ -37,18 +38,22 @@ class Combiner(pl.LightningModule):
             )
         elif hp.combiner.name == 'hifigan':
             self.combiner = Generator(hp.combiner, hp.num_mels, hp.num_mels, n_speakers)
+        elif hp.combiner.name == 'fastspeech2':
+            self.combiner = FastSpeech2Combiner(hp.combiner, hp.num_mels, hp.model.hidden_size, n_speakers)
         else:
             raise NotImplementedError()
         print('Combiner: ', hp.combiner.name)
         self.hp = hp
         self.n_speakers = n_speakers
         self.f0_bins = hp.control_variables.f0_bins
-        #self.pretrained_embedding = hp.combiner.pretrained_embedding
+        self.pretrained_embedding = hp.combiner.use_pretrained_spkr_emb
     
     def forward(self, 
                 hidden,
                 spkr,
-                f0_idx, ):
+                f0_idx,
+                f0,
+                spkr_emb,):
                 # vuv, 
                 # speaker_id,
                 # spkr_emb,
@@ -67,6 +72,12 @@ class Combiner(pl.LightningModule):
             out = self.combiner(hidden.transpose(1,2)).transpose(1,2) #  spkr, f0=f0_idx
         elif self.hp.combiner.name == 'hifigan':
             out = self.combiner(hidden.transpose(1,2), spkr, f0_idx).transpose(1,2)
+        elif self.hp.combiner.name == 'fastspeech2':
+            if self.pretrained_embedding:
+                spkr = spkr_emb
+            else:
+                spkr = spkr
+            out = self.combiner(hidden, spkr)
         return out
 
     
