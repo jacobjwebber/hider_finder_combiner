@@ -124,7 +124,9 @@ class HFC(pl.LightningModule):
     def forward(self):
         """Uses hider network to generate hidden representation"""
         self.hidden = self.hider(self.mel)
-        self.controlled = self.combiner(self.hidden, self.speaker_id, self.f0_idx) # , self.f0_idx, self.is_voiced, self.speaker_id, self.spkr_emb)
+        self.controlled_ = self.combiner(self.hidden, self.speaker_id, self.f0_idx, self.f0, self.spkr_emb) # , self.f0_idx, self.is_voiced, self.speaker_id, self.spkr_emb)
+        if isinstance(self.controlled_, tuple):
+            self.controlled = self.controlled_[1]
 
     def backward_F(self):
         # Attempt to predict the control variable from the hidden repr
@@ -147,7 +149,12 @@ class HFC(pl.LightningModule):
 
         # Use output from forward earlier to find loss between resynthed, controlled output and
         # ground truth input
-        self.combiner_loss = self.g_criterion(self.controlled, self.mel.transpose(1,2))
+        if isinstance(self.controlled_, tuple):
+            self.combiner_loss = (
+                self.g_criterion(self.controlled_[0], self.mel.transpose(1,2)) + 
+                self.g_criterion(self.controlled_[1], self.mel.transpose(1,2)) ) / 2
+        else:
+            self.combiner_loss = self.g_criterion(self.controlled, self.mel.transpose(1,2))
 
         # Use mean to reduce along all timesteps
         self.leakage_loss = self.leakage_loss_id # + leakage los for f0
@@ -210,7 +217,9 @@ class HFC(pl.LightningModule):
         if log_audio and self.hp.training.wandb:
             if not self.hifigan:
                 self.hifigan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-libritts-22050Hz", savedir="hifigan_checkpoints", run_opts={"device": self.mel.device})
-            self.new_controlled = self.combiner(self.hidden, torch.ones_like(self.speaker_id) * 3) # self.f0_idx, self.is_voiced, 3, self.new_speaker)
+            self.new_controlled = self.combiner(self.hidden, torch.ones_like(self.speaker_id) * 3, self.f0_idx, self.f0, self.new_speaker) # self.f0_idx, self.is_voiced, 3, self.new_speaker)
+            if isinstance(self.new_controlled, tuple):
+                self.new_controlled = self.new_controlled[1]
             self.log_audio(self.global_step)
     
     def on_train_epoch_end(self):
