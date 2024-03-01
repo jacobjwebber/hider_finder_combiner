@@ -100,8 +100,11 @@ class HFC(pl.LightningModule):
         self.f_opt = Adam(self.finder.parameters(), lr=self.hp.training.lr_f)
         #self.lr_schedulers = {'g_opt': self.g_opt, 'f_opt': self.f_opt} TODO
         #self.g_schedj = torch.optim.lr_scheduler.StepLR(self.g_opt, step_size=50, gamma=0.5) # TODO add this 
-        self.g_schedj = torch.optim.lr_scheduler.ReduceLROnPlateau(self.g_opt, verbose=True, patience=20)
-        self.f_schedj = torch.optim.lr_scheduler.ReduceLROnPlateau(self.f_opt, verbose=True, patience=20)
+        
+        #self.g_schedj = torch.optim.lr_scheduler.ReduceLROnPlateau(self.g_opt, verbose=True, patience=20)
+        #self.f_schedj = torch.optim.lr_scheduler.ReduceLROnPlateau(self.f_opt, verbose=True, patience=20)
+        self.g_schedj = torch.optim.lr_scheduler.ExponentialLR(self.g_opt, gamma=0.999)
+        self.f_schedj = torch.optim.lr_scheduler.ExponentialLR(self.f_opt, gamma=1.999)
         return [self.g_opt, self.f_opt]
 
 
@@ -224,8 +227,12 @@ class HFC(pl.LightningModule):
     
     def on_train_epoch_end(self):
         # Step learning rate schedulers
-        self.g_schedj.step(self.trainer.callback_metrics['combiner_loss'])
-        self.f_schedj.step(self.trainer.callback_metrics['finder_loss'])
+        #self.g_schedj.step(self.trainer.callback_metrics['combiner_loss'])
+        #self.f_schedj.step(self.trainer.callback_metrics['finder_loss'])
+        if self.current_epoch > 100:
+            print('Reducing LR')
+            self.g_schedj.step()
+            self.f_schedj.step()
     
     def log_audio(self, n):
         # Depends on wandb -- TODO make an option for local or whatever
@@ -307,13 +314,13 @@ def train(config):
         strategy = 'auto'
 
     if config.training.wandb:
-        logger = pl.loggers.WandbLogger(project="hfc_main")
+        logger = pl.loggers.WandbLogger(project="hfc_main", log_model=True)
     else:
         logger = None
     
     checkpointers = [
-        ModelCheckpoint(monitor='val/g_losses', filename='checkpoint-{epoch:02d}-{val/g_losses:.2f}', save_top_k=10),
-        #ModelCheckpoint(save_top_k=10, save_last=True)
+        ModelCheckpoint(monitor='val/g_losses', filename='checkpoint-{epoch:02d}-{val/g_losses:.2f}', save_top_k=10, verbose=True),
+        ModelCheckpoint(every_n_epochs=5, save_last=True, verbose=True)
     ]
     
     trainer = pl.Trainer(logger=logger,
