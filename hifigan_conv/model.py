@@ -55,7 +55,7 @@ class ResBlock1(torch.nn.Module):
             remove_weight_norm(l)
 
 class Generator(torch.nn.Module):
-    def __init__(self, h, input_size, output_size, n_spkrs=None):
+    def __init__(self, h, input_size, output_size, n_spkrs=None, f0_bins=None):
         # input_size, kernel_sizes, dilation_sizes, mid_channel):
         super(Generator, self).__init__()
         self.num_kernels = len(h.kernel_sizes)
@@ -65,6 +65,9 @@ class Generator(torch.nn.Module):
         elif n_spkrs:
             self.spkr_layer = nn.Embedding(n_spkrs, h.speaker_chans)
             input_size += h.speaker_chans
+        
+        if f0_bins is not None:
+            self.f0_layer = nn.Embedding(f0_bins, h.f0_chans)
 
         self.conv_pre = weight_norm(Conv1d(input_size, h.mid_channel, 7, 1, padding=3))
 
@@ -77,13 +80,15 @@ class Generator(torch.nn.Module):
         self.conv_post = weight_norm(Conv1d(ch, output_size, 7, 1, padding=3))
         self.conv_post.apply(init_weights)
 
-    def forward(self, x, spkr=None):
+    def forward(self, x, spkr=None, f0_idx=None):
         
         B, n_mels, n_frame_ = x.shape
         if spkr is not None:
             spkr = self.spkr_layer(spkr)
             spkr = spkr.unsqueeze(2).repeat(1, 1, n_frame_)
             x = torch.cat([x, spkr], dim=1)
+        
+        if f0_idx is not None and 
 
         x = self.conv_pre(x)
 

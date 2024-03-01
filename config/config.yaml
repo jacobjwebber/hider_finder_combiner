@@ -52,9 +52,9 @@ training:
   #lr: 0.10964781961431852
   lr_g: 0.000758
   lr_f: 0.001
-  val_check_interval: 1 # in epochs
+  val_check_interval: 5 # in epochs
   metric: 'combiner_loss'
-  adversarial_start: 8000
+  adversarial_start: 0000
   scheduler_step: 500
   max_len: 100
 
@@ -78,4 +78,4 @@ fmax: 8000
 
 model:
   hidden_size: 80
-  beta: .0001
+  beta: .010

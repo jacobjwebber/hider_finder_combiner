@@ -124,7 +124,7 @@ class HFC(pl.LightningModule):
     def forward(self):
         """Uses hider network to generate hidden representation"""
         self.hidden = self.hider(self.mel)
-        self.controlled = self.combiner(self.hidden, self.speaker_id) # , self.f0_idx, self.is_voiced, self.speaker_id, self.spkr_emb)
+        self.controlled = self.combiner(self.hidden, self.speaker_id, self.f0_idx) # , self.f0_idx, self.is_voiced, self.speaker_id, self.spkr_emb)
 
     def backward_F(self):
         # Attempt to predict the control variable from the hidden repr
@@ -206,7 +206,8 @@ class HFC(pl.LightningModule):
         self.log('val/combiner_loss', self.combiner_loss, prog_bar=True, sync_dist=True)
         self.log('val/finder_loss', self.finder_loss, prog_bar=True, sync_dist=True)
         self.log('val/g_losses', self.g_losses, prog_bar=True, sync_dist=True)
-        if batch_idx < self.hp.training.log_n_audios and self.hp.training.wandb:
+        log_audio = batch_idx % 400 == 0 # TODO make this hyperparam
+        if log_audio and self.hp.training.wandb:
             if not self.hifigan:
                 self.hifigan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-libritts-22050Hz", savedir="hifigan_checkpoints", run_opts={"device": self.mel.device})
             self.new_controlled = self.combiner(self.hidden, torch.ones_like(self.speaker_id) * 3) # self.f0_idx, self.is_voiced, 3, self.new_speaker)

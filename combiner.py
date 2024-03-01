@@ -47,8 +47,8 @@ class Combiner(pl.LightningModule):
     
     def forward(self, 
                 hidden,
-                spkr):
-                # f0_idx, 
+                spkr,
+                f0_idx, ):
                 # vuv, 
                 # speaker_id,
                 # spkr_emb,
@@ -66,7 +66,7 @@ class Combiner(pl.LightningModule):
             #     spkr = speaker_id
             out = self.combiner(hidden.transpose(1,2)).transpose(1,2) #  spkr, f0=f0_idx
         elif self.hp.combiner.name == 'hifigan':
-            out = self.combiner(hidden.transpose(1,2), spkr).transpose(1,2)
+            out = self.combiner(hidden.transpose(1,2), spkr, f0_idx).transpose(1,2)
         return out
 
     
