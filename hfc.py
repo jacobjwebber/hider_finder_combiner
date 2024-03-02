@@ -7,6 +7,8 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchmetrics
+
 from torch.optim import Adam
 import wandb
 from speechbrain.pretrained import HIFIGAN
@@ -91,6 +93,7 @@ class HFC(pl.LightningModule):
         self.g_criterion = nn.L1Loss() #nn.MSELoss()
         # Ignore (for now) index associated with unvoiced regions
         self.hfc_losses = HFCLosses(mode=hp.loss_mode)
+        self.speaker_accuracy = torchmetrics.classification.Accuracy(task="multiclass", num_classes=n_speakers)
         print('n_speakers = ', n_speakers)
 
     def configure_optimizers(self):
@@ -104,7 +107,7 @@ class HFC(pl.LightningModule):
         #self.g_schedj = torch.optim.lr_scheduler.ReduceLROnPlateau(self.g_opt, verbose=True, patience=20)
         #self.f_schedj = torch.optim.lr_scheduler.ReduceLROnPlateau(self.f_opt, verbose=True, patience=20)
         self.g_schedj = torch.optim.lr_scheduler.ExponentialLR(self.g_opt, gamma=0.999)
-        self.f_schedj = torch.optim.lr_scheduler.ExponentialLR(self.f_opt, gamma=1.999)
+        self.f_schedj = torch.optim.lr_scheduler.ExponentialLR(self.f_opt, gamma=0.999)
         return [self.g_opt, self.f_opt]
 
 
