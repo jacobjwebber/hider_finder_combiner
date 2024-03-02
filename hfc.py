@@ -295,6 +295,8 @@ class HFC(pl.LightningModule):
 @hydra.main(version_base=None, config_path='config', config_name="config")
 def train(config):
 
+    torch.manual_seed(613)
+
     print('Setting up data module')
     # TODO move the below to data module
     if False: #config.dataset.rsync:
