@@ -122,7 +122,7 @@ class HFCDataModule(pl.LightningDataModule):
 def collate_fn_val(batch):
     return collate_fn(batch) #, max_len=10000)
 
-def collate_fn(batch, max_len=400):
+def collate_fn(batch, max_len=600):
     # A data tuple has the form:
     # waveform, sample_rate, label, speaker_id, utterance_number
 
