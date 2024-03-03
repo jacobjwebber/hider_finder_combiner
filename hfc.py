@@ -286,7 +286,6 @@ class HFC(pl.LightningModule):
             ax.set_title(title)
             ax.set_ylabel('f0 index')
         axes[-1].set_xlabel('time')
-        figure.savefig('test_mels.png')
         return  figure
 
 
@@ -319,7 +318,7 @@ def train(config):
         strategy = 'auto'
 
     if config.training.wandb:
-        logger = pl.loggers.WandbLogger(project="hfc_main", log_model=True)
+        logger = pl.loggers.WandbLogger(project="hfc_main", log_model='all')
     else:
         logger = None
     
