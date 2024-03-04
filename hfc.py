@@ -323,7 +323,7 @@ def train(config):
         logger = None
     
     checkpointers = [
-        ModelCheckpoint(monitor='val/g_losses', filename='checkpoint-{epoch:02d}-{val/g_losses:.2f}', save_top_k=10, verbose=True),
+        ModelCheckpoint(monitor='val/g_losses', filename='checkpoint-{epoch:02d}-{val/g_losses:.5f}', save_top_k=10, verbose=True),
         ModelCheckpoint(every_n_epochs=5, save_last=True, verbose=True)
     ]
     
